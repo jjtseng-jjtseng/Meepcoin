@@ -29,3 +29,6 @@ Demo MEEP **are not real!!!**
 (no monetary value nor ability to be sent for as of 10-8-2026)
 
 Difficulty is selected manually. Please change it as you want.
+
+## AI Usage notice 
+Cryptography (hashing algorithm and security portions) recieved help from Chat GPT and people online.
