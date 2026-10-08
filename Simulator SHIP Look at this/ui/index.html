@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="lab-key" content="__LAB_API_KEY__">
+  <title>MeepCoin Local Lab</title>
+  <link rel="icon" href="/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <main>
+    <h1>MeepCoin</h1>
+    <p class="muted">Local demo. These coins are not real money.</p>
+    <p id="mining-status" role="status">Loading...</p>
+    <div id="error-banner" role="alert" hidden></div>
+    <p id="notice" role="status" hidden></p>
+    <dl class="stats">
+      <div><dt>Hashrate</dt><dd><span id="hashrate">0</span> <small id="hashrate-unit">H/s</small></dd></div>
+      <div><dt>Demo MEEP</dt><dd id="balance">0</dd></div>
+      <div><dt>Blocks</dt><dd id="blocks">0</dd></div>
+    </dl>
+    <button id="mine-button" class="mine" data-command disabled>Start mining</button>
+    <p id="room-status" class="muted">Start to mine on this computer.</p>
+    <div id="display-tools" hidden>
+      <div class="buttons"><button id="display-button" data-command>Open in browser</button></div>
+      <p id="display-note" class="muted" hidden></p>
+    </div>
+    <div id="approval-list" aria-live="polite"></div>
+    <section id="invite-tools" hidden>
+      <label for="host-invite">Invite for another computer</label>
+      <textarea id="host-invite" rows="3" readonly spellcheck="false"></textarea>
+      <div class="buttons"><button id="copy-invite">Copy invite</button><button id="refresh-invite" data-command>New invite</button></div>
+      <p class="muted">Keep it private. Expires in 10 minutes. Approve the other device here.</p>
+    </section>
+    <details id="more-options">
+      <summary>More options</summary>
+      <div class="options">
+        <div id="quit-tools" class="buttons" hidden><button id="quit-button" data-command>Quit</button></div>
+        <div id="setup">
+          <label for="mode">Room type</label>
+          <select id="mode"><option value="solo">Just this computer</option><option value="host">Host other computers on my LAN</option><option value="join">Join another computer</option></select>
+          <label for="device-name">This computer's name</label><input id="device-name" maxlength="32">
+          <div id="create-form">
+            <label for="room-name">Room name</label><input id="room-name" maxlength="32" value="My room">
+            <label for="saved-room">Saved room</label><select id="saved-room"><option value="">New room</option></select>
+            <label for="difficulty">Difficulty</label><select id="difficulty"><option value="8">8 - quick demo</option><option value="32">32</option><option value="128">128</option><option value="512">512 - longer rounds</option></select>
+            <p class="muted">Fixed difficulty, not automatic block-time adjustment. This demo has no two-minute block target.</p>
+            <div id="adapter-field" hidden><label for="adapter">Private Wi-Fi / Ethernet adapter</label><select id="adapter"></select></div>
+            <button id="create-button" data-command>Create room without mining</button>
+          </div>
+          <div id="join-form" hidden>
+            <label for="join-invite">Invite from the host</label><textarea id="join-invite" rows="3" spellcheck="false"></textarea>
+            <button id="join-button" data-command>Join room</button>
+            <p class="muted">The host must approve you. Then press Start mining.</p>
+          </div>
+          <p id="lan-note" class="muted" hidden>Trusted private networks only. This app does not change firewall or router settings.</p>
+        </div>
+        <label for="duty">CPU worker duty limit</label><select id="duty"><option value="25">25%</option><option value="50" selected>50%</option><option value="75">75%</option><option value="100">100%</option></select>
+        <p class="muted">One worker, not total PC CPU usage. Stop mining or Quit to end the worker.</p>
+        <p id="difficulty-info" class="muted"></p>
+        <p id="total-hashes">0 hashes computed</p>
+        <div id="connected-tools" class="buttons" hidden><button id="export-button" data-command>Export history</button><button id="leave-button" data-command>Close room</button></div>
+        <h2>Devices</h2><div id="device-list"></div>
+        <h2>Recent blocks</h2><div id="block-list"></div>
+        <h2>Activity</h2><div id="activity"></div>
+        <p class="muted">Real MeepHash-W v2. The host checks winners. 10 demo MEEP per block; no wallet, spending, or public network.</p>
+        <p class="muted">Saved data: <span id="data-path"></span></p>
+      </div>
+    </details>
+  </main>
+</body>
+</html>

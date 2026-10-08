@@ -1,0 +1,32 @@
+:root { font-family: system-ui, sans-serif; color: #111; background: white; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 620px; padding: 24px; margin: 0 auto; }
+h1 { font-size: 24px; margin: 0 0 8px; }
+h2 { font-size: 16px; margin: 24px 0 8px; }
+p { line-height: 1.5; }
+.muted { color: #555; font-size: 13px; overflow-wrap: anywhere; }
+[hidden] { display: none !important; }
+button, input, select, textarea { font: inherit; }
+button { padding: 7px 12px; cursor: pointer; }
+button:disabled { cursor: default; }
+button:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid #111; outline-offset: 3px; }
+.stats { display: flex; flex-wrap: wrap; gap: 28px; margin: 24px 0; }
+dt { font-size: 13px; color: #555; }
+dd { margin: 4px 0 0; font-size: 26px; font-weight: 600; }
+dd small { font-size: 14px; font-weight: normal; }
+.mine { font-size: 18px; padding: 12px 24px; }
+details { margin-top: 28px; border-top: 1px solid #ccc; padding-top: 16px; }
+summary { cursor: pointer; }
+.options { padding-top: 8px; }
+label { display: block; margin: 14px 0 5px; }
+input, select, textarea { width: 100%; max-width: 100%; padding: 6px; }
+textarea { resize: vertical; font-family: monospace; font-size: 12px; }
+#create-button, #join-button { margin-top: 14px; }
+.buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+#error-banner { border: 1px solid #a00; color: #900; padding: 10px; overflow-wrap: anywhere; }
+#notice { overflow-wrap: anywhere; }
+.approval { border: 1px solid #999; padding: 10px; margin: 12px 0; }
+.list-row { border-bottom: 1px solid #ddd; padding: 8px 0; font-size: 13px; overflow-wrap: anywhere; }
+.list-row small { display: block; color: #555; margin-top: 4px; }
+@media (max-width: 420px) { main { padding: 16px; } .stats { gap: 20px; } dd { font-size: 23px; } }

@@ -1,0 +1,16 @@
+import { spawn } from 'node:child_process';
+import { mkdir, mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+const output = resolve(process.env.MEEP_LAB_TEST_OUTPUT || 'test-output/desktop'); await mkdir(output, { recursive: true });
+const data = await mkdtemp(join(tmpdir(), 'meep-lab-desktop-'));
+const binary = process.env.MEEP_LAB_TEST_EXE || resolve('node_modules/electron/dist/electron.exe');
+const args = process.env.MEEP_LAB_TEST_EXE ? [] : ['.'];
+const env = { ...process.env, MEEP_LAB_SMOKE: '1', MEEP_LAB_SMOKE_OUTPUT: output, MEEP_LAB_DATA_DIR: data };
+delete env.ELECTRON_RUN_AS_NODE;
+const child = spawn(binary, args, { env, windowsHide: true, stdio: 'inherit' });
+const timer = setTimeout(() => { child.kill(); }, 130_000);
+const code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', resolve); }); clearTimeout(timer);
+const result = JSON.parse(await readFile(join(output, 'desktop-smoke.json'), 'utf8'));
+console.log(JSON.stringify({ executable: binary, exitCode: code, passed: result.passed, height: result.mined.room.height, hashes: result.mined.miner.hashes, stopped: !result.after.miner.running, screenshotDirectory: output }, null, 2));
+if (code !== 0 || !result.passed) process.exitCode = 1;
