@@ -1,0 +1,31 @@
+{
+  "name": "meepcoin-local-browser-miner-slice",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Local, synthetic, voluntary browser-to-pool mining slice (Phase 1B). Not a published package.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "pool": "node pool/dev/run.mjs",
+    "test:slice": "node --test \"web-miner/tests/*.test.mjs\" \"pool/dev/tests/*.test.mjs\"",
+    "test:native": "node --test \"pool/dev/tests/native_helper.test.mjs\" \"pool/dev/tests/dual_verifier.test.mjs\" \"pool/dev/tests/fail_closed.test.mjs\" \"pool/dev/tests/wsl_observation.test.mjs\" \"pool/dev/tests/ownership_graph.test.mjs\" \"pool/dev/tests/source_identity.test.mjs\" \"pool/dev/tests/cli_shutdown.test.mjs\"",
+    "build:native-helper": "wsl.exe --exec bash scripts/build-native-helper.sh",
+    "test:v2": "node meepow/wasm/v2_regress.mjs",
+    "test:vectors:legacy": "node meepow/wasm/run-vectors.mjs",
+    "verify": "npm run test:v2 && npm run test:vectors:legacy && npm run test:slice",
+    "smoke:browser": "node web-miner/tools/browser_smoke.mjs"
+  },
+  "//scripts": {
+    "test:v2": "REQUIRED for this slice. Frozen MeepHash-W v2 native/Wasm equivalence, 20 committed vectors from meepow/vectors/vectors_v2.txt. This is the regression that covers the algorithm the browser actually runs.",
+    "test:vectors:legacy": "algoVersion 0 LEGACY fast/dev vectors (132 of them). Kept as a separate regression. These are NOT v2 vectors and prove nothing about frozen v2.",
+    "verify": "Runs test:v2, then test:vectors:legacy, then test:slice, and fails if any of them fails.",
+    "test:native": "Focused subset of test:slice: the helper protocol suite, the dual-verifier cross-check, the fail-closed acceptance fence, WSL process observation, the ownership graph, the build-source identity and the CLI shutdown controller. All are ALREADY inside test:slice; this target exists only to run them alone while working on the helper. dual_verifier.test.mjs needs the helper build (npm run build:native-helper) and reports itself SKIPPED -- never passed -- if it is missing.",
+    "build:native-helper": "Builds meepow-v2-helper into meepow/build/native-helper/ (gitignored) via WSL. NOT run automatically by the pool or by any test: the pool refuses to start dual verification rather than building anything behind your back.",
+    "smoke:browser": "Optional. Needs an already-installed Chrome/Chromium/Edge; installs nothing and prints SKIPPED if none is found."
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

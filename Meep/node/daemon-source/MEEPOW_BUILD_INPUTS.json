@@ -1,0 +1,169 @@
+{
+  "_comment": [
+    "DETERMINISTIC MANIFEST OF EVERY PROJECT-LOCAL MEEPHASH FILE THAT CAN AFFECT THE DAEMON'S",
+    "meepow_v2 COMPILATION.",
+    "",
+    "HOW IT WAS DERIVED, not assumed. The 23 source/header entries are the files the compiler",
+    "actually opened while building the meepow_v2 and blake3 targets, read back out of the real",
+    "build's CMake dependency data (meepow_build/CMakeFiles/<target>.dir/compiler_depend.internal)",
+    "and filtered to paths under meepow/. The 24th, meepow/CMakeLists.txt, is the build-selection",
+    "input: it decides which sources those 23 are.",
+    "",
+    "WHY 24 IS SUFFICIENT, AND WHY A NEW FILE CANNOT SLIP IN. meepow/CMakeLists.txt names every",
+    "source explicitly -- there is no file(GLOB) anywhere in it -- so no file can enter this build",
+    "without editing CMakeLists.txt, and CMakeLists.txt is in this manifest. The daemon's own",
+    "CMakeLists.txt forces MEEPOW_LIB_ONLY=ON and MEEPOW_BLAKE3_PORTABLE=ON, so the BLAKE3 SIMD",
+    "sources (blake3_sse2.c, blake3_sse41.c, blake3_avx2.c, blake3_avx512.c) are NOT compiled;",
+    "turning them on would require editing CMakeLists.txt, which this manifest would catch.",
+    "",
+    "WHAT THE AGGREGATE IDENTITY PROVES. That the daemon was compiled against THESE EXACT BYTES of",
+    "the proof-of-work implementation. It catches the ordinary and dangerous case: a modified or",
+    "dirty MeepHash tree compiling into a daemon whose source lock passes.",
+    "",
+    "WHAT IT DOES NOT PROVE. It is not a review of the algorithm, not a statement that MeepHash-W",
+    "v2 is sound, and not a claim about the resulting binary's correctness. It says which bytes",
+    "went in, nothing about whether they are good bytes. It also says nothing about the compiler,",
+    "libc, or flags -- those are recorded separately in the build manifest.",
+    "",
+    "WHY THE HELPER'S 26-FILE SOURCE ID IS NOT REUSED HERE. scripts/helper-source-inventory.txt is",
+    "a conservative superset for a DIFFERENT target (meepow-v2-helper) and deliberately omits",
+    "CMake/build-selection inputs. Overlapping, but neither is a subset of the other, so the two",
+    "identities are kept separate rather than conflated."
+  ],
+  "schema": "meepcoin-meepow-build-inputs/1",
+  "consumed_by": "the daemon's meepow_v2 library, via add_subdirectory(${MEEPCOIN_MEEPOW_DIR})",
+  "required_options": {
+    "MEEPOW_LIB_ONLY": "ON",
+    "MEEPOW_BLAKE3_PORTABLE": "ON"
+  },
+  "derivation": "compiler_depend.internal of the meepow_v2 and blake3 targets, filtered to meepow/, plus meepow/CMakeLists.txt",
+  "aggregate_identity_recipe": "sha256 over the sorted '<sha256>  <repo-relative path>\\n' lines of the files below",
+  "aggregate_identity": "9b0edfbd418e0b0c7233692abc7e305fe5e9d4bdfe163ad0eecb51f3228de9d7",
+  "file_count": 24,
+  "head_meepow_tree": "0549a0f57bf12fe2780cc79ab30cff2a40aa4358",
+  "head_meepow_tree_note": "The git tree of meepow/ at the main repository's HEAD. Informational: it proves what the repository holds, not what a build read. The per-file hashes below are the contract.",
+  "v2_frozen_peeled_commit": "68ae0a660bf36b54d3c5adb290e9ef287f684eb4",
+  "v2_frozen_note": "The peeled commit of the v2-frozen tag. Informational only: a tag is a movable label, so it is recorded for provenance and is NOT trusted by the verifier. Nothing is accepted because a tag says so.",
+  "files": [
+    {
+      "path": "meepow/CMakeLists.txt",
+      "sha256": "db6e76c9806b5cbd9cc7f3616a9275689f83aeb4df170dba3c495a226c7325d7",
+      "bytes": 11902
+    },
+    {
+      "path": "meepow/include/meepow/meepow.h",
+      "sha256": "0e1c0c46fd7dff2815e1212ecc8e11e9fd219a83e1f0f478b3970a9ac37f1ca6",
+      "bytes": 4420
+    },
+    {
+      "path": "meepow/include/meepow/v2.hpp",
+      "sha256": "f28eeb5d01e620113e13d1617504b7702c9313d0a556b00fe8b8fba7b0d73969",
+      "bytes": 11068
+    },
+    {
+      "path": "meepow/include/meepow/v2_c.h",
+      "sha256": "749b6d3ba80a0400d64baefb8f682dc3a88ee0c7b1f582ecf0c83083279dd246",
+      "bytes": 6597
+    },
+    {
+      "path": "meepow/src/blake3_xof.hpp",
+      "sha256": "fb526b1727e54ceaf11c5ce0469d94f3dfda64e314efcfaec7e204eb41b25f1a",
+      "bytes": 1259
+    },
+    {
+      "path": "meepow/src/dataset.hpp",
+      "sha256": "bcce40f7e3612dec0795bd2d9c1e576468d38678c8a584993834e7d5458dff12",
+      "bytes": 2223
+    },
+    {
+      "path": "meepow/src/dataset_backend.hpp",
+      "sha256": "a873d6d8091e32f41f334f5c0a056c1d861839a78a93929a4ed31421b7b70a06",
+      "bytes": 5694
+    },
+    {
+      "path": "meepow/src/dataset_v2.hpp",
+      "sha256": "7c227ba88b82700631f446d03f3f685e90cf2ce066191976b3249e5c1430ef35",
+      "bytes": 3738
+    },
+    {
+      "path": "meepow/src/endian.hpp",
+      "sha256": "cae8f98b8feb7fc24d7f7a62fdbb7608b3703e695c4d8fbfd1cc74dcb61698b4",
+      "bytes": 2629
+    },
+    {
+      "path": "meepow/src/epoch.hpp",
+      "sha256": "dac0fb19f82b50575010a9cb6a8b07e19599fe7af37f94003492cf84f2624a93",
+      "bytes": 2804
+    },
+    {
+      "path": "meepow/src/meepow_v1.hpp",
+      "sha256": "7722fc5eb5bec74d96084cd32c6c7ba4432dc28e2fcba2492d72fecef463078a",
+      "bytes": 10012
+    },
+    {
+      "path": "meepow/src/meepow_v2.hpp",
+      "sha256": "d4d50651942867ef666e7013cd59206ead12b90b1f24d253315931c21ae128fc",
+      "bytes": 3008
+    },
+    {
+      "path": "meepow/src/params.hpp",
+      "sha256": "44910a405ab7d80c611441ada744fd485c1dd7dc2806c0ae3aabaac2365de72a",
+      "bytes": 3093
+    },
+    {
+      "path": "meepow/src/params_v1.hpp",
+      "sha256": "facd476f5edc37c2769e9d0c78992050c0a8b408042b38cd767ab7d657c23f19",
+      "bytes": 3648
+    },
+    {
+      "path": "meepow/src/program.hpp",
+      "sha256": "333f42978d270a1f33572dff4c20cac2ba6fa9158675ed4a39ab4ad7542f52ab",
+      "bytes": 811
+    },
+    {
+      "path": "meepow/src/target.hpp",
+      "sha256": "3d50721cf44a513410f4c7a8082243bdb4bffa36a4fa6793be0e3b05dca7bdc2",
+      "bytes": 1837
+    },
+    {
+      "path": "meepow/src/v2_api.cpp",
+      "sha256": "dffb703fd40a72f98e1f945bbc196d07e69b8bcc42cfb9a24216bd2739605682",
+      "bytes": 9106
+    },
+    {
+      "path": "meepow/src/v2_capi.cpp",
+      "sha256": "937b1cd428d89e5d83aa54c4d19453e27d08499224af44350dea51a9ff313c08",
+      "bytes": 6968
+    },
+    {
+      "path": "meepow/src/vm.hpp",
+      "sha256": "65f7de2e906b93c75c257e7ebcf9da47b3f2af2ed17fbf1cbb29777e4ea811b9",
+      "bytes": 5289
+    },
+    {
+      "path": "meepow/third_party/blake3/blake3.c",
+      "sha256": "b118ddf7cf9e6e5ef3fded72dcb1acf9dfdc4ea923cbe4605900ad6ee9afe1af",
+      "bytes": 28945
+    },
+    {
+      "path": "meepow/third_party/blake3/blake3.h",
+      "sha256": "df32c1e80577eabaab8ca9ba3b8be273bc2201a8cff6276c62cd8deba15f9348",
+      "bytes": 2923
+    },
+    {
+      "path": "meepow/third_party/blake3/blake3_dispatch.c",
+      "sha256": "134f21550138c0af6312925c988aeee35df287e4119e8ad1d206fccdb2238fe3",
+      "bytes": 9189
+    },
+    {
+      "path": "meepow/third_party/blake3/blake3_impl.h",
+      "sha256": "d388dca3574602c8849805ea3c8c0a12d082ac0e428756f305e111942f099af4",
+      "bytes": 12054
+    },
+    {
+      "path": "meepow/third_party/blake3/blake3_portable.c",
+      "sha256": "2bc25b0dad67b4329d0b49cfa075ab2b0d04e424addbddc4e9c389c52a192524",
+      "bytes": 5889
+    }
+  ]
+}

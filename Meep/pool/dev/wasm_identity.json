@@ -1,0 +1,53 @@
+{
+  "_comment": [
+    "Pinned identity of the MeepHash-W v2 WebAssembly build this slice will run.",
+    "meepow/wasm/meepow.mjs and meepow/wasm/meepow.wasm are gitignored BUILD OUTPUTS, not",
+    "committed files, so this manifest is how a reviewer knows which build was exercised. The",
+    "development pool hashes both files and refuses to import, instantiate or serve either one",
+    "unless it matches exactly. Cheap file integrity only: computing a SHA-256 of two small files",
+    "is not MeepHash-W and is not mining.",
+    "Regenerate with scripts/build-wasm.ps1 (or scripts/build-wasm.sh) and update these values",
+    "ONLY together with a recorded reason; do not bless a new hash to make a mismatch go away."
+  ],
+  "algorithm": "meephash-w-v2-frozen",
+  "sourceOfTruth": "meepow/src (frozen v2), built by scripts/build-wasm.sh under the pinned Emscripten in docs/TOOLCHAIN.md",
+  "recordedBy": "docs/LOCAL_BROWSER_MINER_SLICE.md (the CURRENT rebuilt hashes). NOT docs/BROWSER_V2.md: that is a historical measurement report and correctly still pins the older artifact it actually measured, whose hashes are under previousArtifacts below.",
+  "artifacts": {
+    "meepow/wasm/meepow.mjs": "5a61038d0d40aaaf4f33d779dfa9e0b4ee7e68817eabdf8de57465711ef49e31",
+    "meepow/wasm/meepow.wasm": "a039b57ed7d874792eced9044054764c6c3d10c316581efe64721ff52b3988a7"
+  },
+  "syntheticFixture": {
+    "_comment": [
+      "The fixed synthetic job. It is read from the COMMITTED vector file",
+      "meepow/vectors/vectors_v2.txt, so the pool needs zero MeepHash-W computations before",
+      "a client declares start intent. meep_v2_setup() in meepow/wasm/meepow_wasm.cpp builds exactly the",
+      "context those vectors were generated from (nparents=4, fixed epoch key / seed hash /",
+      "8-byte template), which is why nonce N of that file is meep_v2_run1(N).",
+      "meep_v2_setup() is now a thin wrapper over meep_v2_setup_ctx() passing those same constants;",
+      "the fixture and these vectors are unchanged."
+    ],
+    "vectorFile": "meepow/vectors/vectors_v2.txt",
+    "nparents": 4,
+    "nonceStart": 0,
+    "nonceRange": 16,
+    "expectedTargetHexLE": "92c4ac1ee6488429a94a4da91bc5a793daa897e2f57fc626cfa61966d29d810e",
+    "expectedQualifyingNonce": 15,
+    "expectedNonQualifyingNonce": 4
+  },
+  "previousArtifacts": {
+    "_comment": [
+      "The build these hashes replaced, kept so a reviewer can see exactly what changed and when.",
+      "REASON FOR THE CHANGE: meepow/wasm/meepow_wasm.cpp gained meep_v2_setup_ctx / meep_v2_teardown",
+      "/ meep_v2_active / meep_v2_run1_checked, so a browser worker can hash an ARBITRARY frozen-v2",
+      "context instead of only the one synthetic fixture that meep_v2_setup() hard-coded.",
+      "THE CORE ALGORITHM DID NOT CHANGE. meepow/src/** is byte-identical; only the Wasm adapter in",
+      "meepow/wasm/meepow_wasm.cpp was edited. meep_v2_setup() is now a wrapper that passes the same",
+      "constants it always used, and the 20 committed vectors_v2.txt known-answer vectors still pass",
+      "unchanged -- that equality is the evidence, not this sentence."
+    ],
+    "meepow/wasm/meepow.mjs": "b811c26a9f9c4cf6334b9b69f136817a965451dac5775743f360fde59c8b3f2e",
+    "meepow/wasm/meepow.wasm": "06269f843a53f98fdc31826b19653b98437357e0bc5bb75cd7c0474ae4f9d5c6",
+    "replacedOn": "2026-09-11",
+    "builtWith": "local emsdk 6.0.3, emcc build 283e2d130132859fde6a4e4c87fd254b38127651 (the emcc build id pinned in docs/TOOLCHAIN.md for emscripten/emsdk:6.0.3); built directly, NOT through the canonical Docker image"
+  }
+}

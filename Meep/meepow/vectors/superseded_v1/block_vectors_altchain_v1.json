@@ -1,0 +1,32 @@
+{
+  "case": "alternate-chain siblings",
+  "description": "Two distinct nonces satisfying the same block template. Both are valid blocks with the same parent at the same height. The first submitted becomes the tip; the second is validated via get_altblock_longhash.",
+  "height": 2160,
+  "difficulty": 100,
+  "target_le_hex": "8fc2f5285c8fc2f5285c8fc2f5285c8fc2f5285c8fc2f5285c8fc2f5285c8f02",
+  "seed_height": 2048,
+  "epoch_key": "96b5149a60173cf84a93b870d97bbf64bdfbc20d15788c0c992e9c99dbca18e3",
+  "delayed_seed_input": "96b5149a60173cf84a93b870d97bbf64bdfbc20d15788c0c992e9c99dbca18e3",
+  "block_hashing_blob": "0110c6bba8d306c2b1ba360c3e4aab49ac8bb275282a7d0c1161bb3b86c6ffe3ecb1dd33c859d4000000006252587b52bd413a5eba8913e0313081874714b8557aadd6098fb41a5cc59ecf01",
+  "blob_nonce_zeroed": "0110c6bba8d306c2b1ba360c3e4aab49ac8bb275282a7d0c1161bb3b86c6ffe3ecb1dd33c859d4000000006252587b52bd413a5eba8913e0313081874714b8557aadd6098fb41a5cc59ecf01",
+  "nonce_offset_bytes_hashing_blob": 39,
+  "nonce_offset_bytes_full_blob": 39,
+  "nonce_byte_order": "little-endian uint32",
+  "siblings": [
+    {
+      "nonce": 281,
+      "pow": "f41a2032d1db3210a281b123a9097b76c3603181ccafef99fd79872da381c801",
+      "submit_status": "OK",
+      "submit_error": null,
+      "full_block_blob": "0110c6bba8d306c2b1ba360c3e4aab49ac8bb275282a7d0c1161bb3b86c6ffe3ecb1dd33c859d41901000001fa1001fff0100693c5bbd503024178f69de15042f3bd15b49bbb06e65098764408b56eb81bf010e0a1bf70c73280e497d012023b869d4f11156913507c8125b7891702e9e32e4915df2ad3da084fb2e6d9afa580e8eda1ba01026d7215e094c6b132a1ac9c0bc443fd89b1b024a4cc997809564ee1e7404d854d8090cad2c60e02905d497c71c4229e35047c75f9a0468b529763de99b7c88219db7a8ab8e1743380e08d84ddcb0102476291694ca91a926a56ea8f28a9062b7360deb9d39f0e1dc3d2bc9132fb342580c0caf384a30202a325179a38960f307ecd6b41e9951ce88a42c81ccf264ce19da7dc2fae97dd282b01c8b368b24beb76e71faf54e770e144eb3c1eb024319f92ef4de669dc610e1a3b0208000000000000000000"
+    },
+    {
+      "nonce": 296,
+      "pow": "89e8cf74e8cb1f65816e45199b190fd818bceac088335f492c4112cb77cac801",
+      "submit_status": "OK",
+      "submit_error": null,
+      "full_block_blob": "0110c6bba8d306c2b1ba360c3e4aab49ac8bb275282a7d0c1161bb3b86c6ffe3ecb1dd33c859d42801000001fa1001fff0100693c5bbd503024178f69de15042f3bd15b49bbb06e65098764408b56eb81bf010e0a1bf70c73280e497d012023b869d4f11156913507c8125b7891702e9e32e4915df2ad3da084fb2e6d9afa580e8eda1ba01026d7215e094c6b132a1ac9c0bc443fd89b1b024a4cc997809564ee1e7404d854d8090cad2c60e02905d497c71c4229e35047c75f9a0468b529763de99b7c88219db7a8ab8e1743380e08d84ddcb0102476291694ca91a926a56ea8f28a9062b7360deb9d39f0e1dc3d2bc9132fb342580c0caf384a30202a325179a38960f307ecd6b41e9951ce88a42c81ccf264ce19da7dc2fae97dd282b01c8b368b24beb76e71faf54e770e144eb3c1eb024319f92ef4de669dc610e1a3b0208000000000000000000"
+    }
+  ],
+  "expected_result": "PASS (both satisfy the target; both are valid at this height)"
+}

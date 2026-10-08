@@ -1,0 +1,196 @@
+From e300ce9899065bcb62f739c36731ef3c401b1164 Mon Sep 17 00:00:00 2001
+From: meepcoin-reconstruct <reconstruct@localhost>
+Date: Wed, 23 Sep 2026 23:29:50 -0400
+Subject: [PATCH] tools: add owned block-hashing converter protocol
+
+Keep legacy one-shot vector conversion, and add a bounded strict stdin/stdout server mode so a future pool does not expose a submit-ready full block in process arguments. This changes tooling only, not consensus or daemon behavior.
+---
+ .../meepcoin_blockhashing.cpp                 | 165 ++++++++++++++++--
+ 1 file changed, 153 insertions(+), 12 deletions(-)
+
+diff --git a/src/meepcoin_genesis/meepcoin_blockhashing.cpp b/src/meepcoin_genesis/meepcoin_blockhashing.cpp
+index 002067d..74d0292 100644
+--- a/src/meepcoin_genesis/meepcoin_blockhashing.cpp
++++ b/src/meepcoin_genesis/meepcoin_blockhashing.cpp
+@@ -4,25 +4,166 @@
+ // transaction merkle root plus the transaction count -- NOT the full serialized block returned by
+ // the get_block RPC. Confusing the two makes every valid block appear to fail its own PoW.
+ //
+-// Usage: meepcoin-blockhashing <full_block_blob_hex>
++// Legacy one-shot usage (kept for the existing vector tooling):
++//   meepcoin-blockhashing <full_block_blob_hex>
++//
++// Owned server usage (keeps the submit-ready full block out of argv):
++//   meepcoin-blockhashing --server <32-lowercase-hex-token>
++//
++// The server writes `HELLO 1 <token> <pid>`, accepts strict
++// `CONVERT <canonical-u32-id> <lowercase-full-block-hex>` lines, and answers
++// `RESULT <id> <lowercase-hashing-blob-hex>`. `QUIT` yields `BYE` and exit 0. Any malformed input,
++// oversized line or unparsable block yields one non-secret `FAULT <code>` and a nonzero exit.
++
++#include <cstdint>
+ #include <cstdio>
++#include <iostream>
++#include <limits>
+ #include <string>
+ 
++#include <unistd.h>
++
+ #include "cryptonote_basic/cryptonote_basic.h"
+ #include "cryptonote_basic/cryptonote_format_utils.h"
+ #include "string_tools.h"
+ 
+-int main(int argc, char** argv) {
+-    if (argc < 2) { std::fprintf(stderr, "usage: %s <full_block_blob_hex>\n", argv[0]); return 2; }
+-    std::string blob;
+-    if (!epee::string_tools::parse_hexstr_to_binbuff(std::string(argv[1]), blob)) {
+-        std::fprintf(stderr, "bad hex\n"); return 2;
++namespace
++{
++  constexpr std::size_t MAX_BLOCK_BYTES = 1u << 20;
++  constexpr std::size_t MAX_BLOCK_HEX = MAX_BLOCK_BYTES * 2;
++  constexpr std::size_t MAX_REQUEST_LINE = MAX_BLOCK_HEX + 32;
++
++  bool is_lower_hex(const std::string &value, const std::size_t exact = 0)
++  {
++    if (value.empty() || (value.size() & 1) != 0 || (exact != 0 && value.size() != exact))
++      return false;
++    for (const unsigned char c : value)
++      if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
++        return false;
++    return true;
++  }
++
++  bool canonical_u32(const std::string &text, std::uint32_t &out)
++  {
++    if (text.empty() || (text.size() > 1 && text[0] == '0'))
++      return false;
++    std::uint64_t value = 0;
++    for (const unsigned char c : text)
++    {
++      if (c < '0' || c > '9')
++        return false;
++      value = value * 10 + static_cast<unsigned>(c - '0');
++      if (value > std::numeric_limits<std::uint32_t>::max())
++        return false;
++    }
++    out = static_cast<std::uint32_t>(value);
++    return true;
++  }
++
++  enum class line_result { ok, eof, malformed, too_long };
++
++  line_result read_line(std::string &line)
++  {
++    line.clear();
++    for (;;)
++    {
++      const int got = std::cin.get();
++      if (got == std::char_traits<char>::eof())
++        return line.empty() ? line_result::eof : line_result::malformed;
++      const unsigned char c = static_cast<unsigned char>(got);
++      if (c == '\n')
++        return line_result::ok;
++      if (c < 0x20 || c > 0x7e)
++        return line_result::malformed;
++      if (line.size() >= MAX_REQUEST_LINE)
++        return line_result::too_long;
++      line.push_back(static_cast<char>(c));
+     }
+-    cryptonote::block b;
+-    if (!cryptonote::parse_and_validate_block_from_blob(blob, b)) {
+-        std::fprintf(stderr, "could not parse block\n"); return 1;
++  }
++
++  enum class convert_result { ok, bad_hex, bad_block };
++
++  convert_result convert_block(const std::string &hex, std::string &hashing_hex)
++  {
++    std::string blob;
++    if (!epee::string_tools::parse_hexstr_to_binbuff(hex, blob))
++      return convert_result::bad_hex;
++    cryptonote::block block;
++    if (!cryptonote::parse_and_validate_block_from_blob(blob, block))
++      return convert_result::bad_block;
++    const cryptonote::blobdata hashing = cryptonote::get_block_hashing_blob(block);
++    hashing_hex = epee::string_tools::buff_to_hex_nodelimer(hashing);
++    return convert_result::ok;
++  }
++
++  int fault(const char *code)
++  {
++    std::cout << "FAULT " << code << '\n' << std::flush;
++    return 1;
++  }
++
++  int serve(const std::string &token)
++  {
++    if (!is_lower_hex(token, 32))
++      return 2;
++    std::cout << "HELLO 1 " << token << ' ' << static_cast<unsigned long>(::getpid())
++              << '\n' << std::flush;
++
++    std::string line;
++    for (;;)
++    {
++      const line_result read = read_line(line);
++      if (read == line_result::eof)
++        return 1;
++      if (read == line_result::too_long)
++        return fault("line_too_long");
++      if (read != line_result::ok)
++        return fault("malformed_line");
++      if (line == "QUIT")
++      {
++        std::cout << "BYE\n" << std::flush;
++        return 0;
++      }
++      if (line.compare(0, 8, "CONVERT ") != 0)
++        return fault("bad_request");
++      const std::size_t split = line.find(' ', 8);
++      if (split == std::string::npos)
++        return fault("bad_request");
++      const std::string id_text = line.substr(8, split - 8);
++      const std::string full_hex = line.substr(split + 1);
++      std::uint32_t id = 0;
++      if (!canonical_u32(id_text, id) || !is_lower_hex(full_hex)
++          || full_hex.size() > MAX_BLOCK_HEX)
++        return fault("bad_request");
++      std::string hashing_hex;
++      if (convert_block(full_hex, hashing_hex) != convert_result::ok)
++        return fault("invalid_block");
++      std::cout << "RESULT " << id << ' ' << hashing_hex << '\n' << std::flush;
+     }
+-    const cryptonote::blobdata hb = cryptonote::get_block_hashing_blob(b);
+-    std::printf("%s\n", epee::string_tools::buff_to_hex_nodelimer(hb).c_str());
+-    return 0;
++  }
++}
++
++int main(int argc, char **argv)
++{
++  if (argc == 3 && std::string(argv[1]) == "--server")
++    return serve(argv[2]);
++  if (argc != 2)
++  {
++    std::fprintf(stderr, "usage: %s <full_block_blob_hex> | --server <token>\n", argv[0]);
++    return 2;
++  }
++  std::string hashing_hex;
++  const convert_result converted = convert_block(argv[1], hashing_hex);
++  if (converted == convert_result::bad_hex)
++  {
++    std::fprintf(stderr, "bad hex\n");
++    return 2;
++  }
++  if (converted != convert_result::ok)
++  {
++    std::fprintf(stderr, "could not parse block\n");
++    return 1;
++  }
++  std::printf("%s\n", hashing_hex.c_str());
++  return 0;
+ }
+-- 
+2.53.0
+

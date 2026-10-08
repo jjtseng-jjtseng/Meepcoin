@@ -1,0 +1,71 @@
+# Docker build context allowlist for the MeepCoin daemon build.
+#
+# DENY EVERYTHING, THEN NAME WHAT GOES IN. The build context previously included the whole
+# repository: results/, .git/, local build trees, attachments, logs, wallets, caches and unrelated
+# workspace content were all uploaded to the daemon so that a handful of files could be copied out
+# of them. That is a privacy and a correctness problem at once -- it ships things that have no
+# business leaving the machine, and it makes the image depend on files nobody declared.
+#
+# The MeepHash entries below are not a directory glob, and they are two different things:
+#
+#   4.  EXACTLY the 24 files named in node/daemon-source/MEEPOW_BUILD_INPUTS.json -- the derived
+#       meepow_v2/BLAKE3 compile closure plus the one build-selection input. These are the bytes the
+#       daemon compiles, and the 013cfbef... aggregate identity covers them and nothing else. Keep
+#       this list and that manifest in step; verify_lock.py fails the build if a declared input is
+#       absent.
+#
+#   4b. ONE configure-only source, meepow/src/meepow.cpp. meepow/CMakeLists.txt declares the legacy
+#       v1 `meepow` library before its MEEPOW_LIB_ONLY return, so CMake's generate step needs the
+#       path to exist, but the requested daemon targets link meepow_v2 and must never compile it.
+#       It is NOT part of the 24-file identity: node/docker-build.sh pins its size and SHA-256
+#       separately, and fails the build if a legacy object or libmeepow.a appears.
+#
+# No other MeepHash file can enter the image.
+
+# 1. Deny the entire repository.
+*
+
+# 2. The build recipe itself.
+!node/Dockerfile
+!node/Dockerfile.offline-variant
+!node/docker-build.sh
+
+# 3. The daemon source lock: patches, verifier, checksums, manifest.
+!node/daemon-source/**
+
+# 4. The locked MeepHash compile inputs, named one by one.
+!meepow/CMakeLists.txt
+!meepow/include/meepow/meepow.h
+!meepow/include/meepow/v2.hpp
+!meepow/include/meepow/v2_c.h
+!meepow/src/blake3_xof.hpp
+!meepow/src/dataset.hpp
+!meepow/src/dataset_backend.hpp
+!meepow/src/dataset_v2.hpp
+!meepow/src/endian.hpp
+!meepow/src/epoch.hpp
+!meepow/src/meepow_v1.hpp
+!meepow/src/meepow_v2.hpp
+!meepow/src/params.hpp
+!meepow/src/params_v1.hpp
+!meepow/src/program.hpp
+!meepow/src/target.hpp
+!meepow/src/v2_api.cpp
+!meepow/src/v2_capi.cpp
+!meepow/src/vm.hpp
+!meepow/third_party/blake3/blake3.c
+!meepow/third_party/blake3/blake3.h
+!meepow/third_party/blake3/blake3_dispatch.c
+!meepow/third_party/blake3/blake3_impl.h
+!meepow/third_party/blake3/blake3_portable.c
+
+# 4b. The one configure-only source: present for CMake generate, pinned separately, never compiled.
+!meepow/src/meepow.cpp
+
+# 5. Belt and braces: never send version control, build output or local state, even if a rule above
+#    were widened by accident.
+.git/
+.gitignore
+**/build/
+**/node_modules/
+**/__pycache__/

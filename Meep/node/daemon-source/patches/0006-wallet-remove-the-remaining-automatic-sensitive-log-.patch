@@ -1,0 +1,171 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: tseng <tseng.jayj@gmail.com>
+Date: Sun, 20 Sep 2026 09:10:00 -0400
+Subject: [PATCH] wallet: remove the remaining automatic sensitive log payloads
+
+Patch 0005 removed the routine tools::detail::print_source_entry helper. A
+full-tree audit found equivalent INHERITED disclosures still linked into
+meepcoin-wallet-cli and meepcoin-wallet-rpc, on exceptional and legacy paths
+rather than the routine one. They are removed here.
+
+src/cryptonote_core/cryptonote_tx_utils.cpp
+  - miner coinbase construction logged the transaction SECRET key on a
+    key-derivation failure;
+  - the input bounds failure logged src_entr.real_output, the true ring
+    position;
+  - the derived-key mismatch failure logged the ring index, the true ring
+    position, the derived key, the real output public key, the amount, the
+    RCT status, the real out tx key and real_output_in_tx_index -- a
+    complete deanonymisation of that input in one error path;
+  - the tx.version == 1 path accumulated every ring public key, every ring
+    signature, the input EPHEMERAL SECRET KEY and the true ring position
+    into a stringstream and emitted it with MCINFO("construct_tx", ...);
+  - both construct_tx paths dumped the whole constructed transaction as
+    JSON under "transaction_created:" automatically.
+
+src/wallet/wallet2.cpp
+  - light_wallet_key_image_is_ours logged the account VIEW SECRET KEY and,
+    a few lines later, the derived EPHEMERAL SECRET KEY on failure.
+
+src/device/device_default.cpp
+  - output construction logged the TRANSACTION PRIVATE KEY on failure.
+
+Only the payloads are removed. Each site keeps generic failure text that
+still says which check failed, so a failure is still diagnosable, and no
+site is merely demoted to a lower log level. The dead idx counter that
+only the deleted mismatch log used is removed with it.
+
+NOT TOUCHED, deliberately: simplewallet's rpc_payment_info prints the RPC
+client secret key because the operator explicitly asked for it. That is a
+requested display, not automatic logging, and it is out of scope here.
+
+Control flow, validation, transaction construction, output selection,
+consensus, MeepHash, rewards, difficulty, the browser and the native helper
+are unchanged. No consensus value moves; construct_tx still builds the same
+transaction and still refuses the same inputs.
+---
+ src/cryptonote_core/cryptonote_tx_utils.cpp | 22 +++------------------
+ src/device/device_default.cpp               |  3 +--
+ src/wallet/wallet2.cpp                      |  4 ++--
+ 3 files changed, 6 insertions(+), 23 deletions(-)
+
+diff --git a/src/cryptonote_core/cryptonote_tx_utils.cpp b/src/cryptonote_core/cryptonote_tx_utils.cpp
+index 3ec9171..f3ea8d5 100644
+--- a/src/cryptonote_core/cryptonote_tx_utils.cpp
++++ b/src/cryptonote_core/cryptonote_tx_utils.cpp
+@@ -180,7 +180,7 @@ namespace cryptonote
+       crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);
+       crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
+       bool r = crypto::generate_key_derivation(miner_address.m_view_public_key, txkey.sec, derivation);
+-      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << miner_address.m_view_public_key << ", " << crypto::secret_key_explicit_print_ref{txkey.sec} << ")");
++      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation for the miner address");
+ 
+       r = crypto::derive_public_key(derivation, no, miner_address.m_spend_public_key, out_eph_public_key);
+       CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << no << ", "<< miner_address.m_spend_public_key << ")");
+@@ -347,13 +347,11 @@ namespace cryptonote
+ 
+     uint64_t summary_inputs_money = 0;
+     //fill inputs
+-    int idx = -1;
+     for(const tx_source_entry& src_entr:  sources)
+     {
+-      ++idx;
+       if(src_entr.real_output >= src_entr.outputs.size())
+       {
+-        LOG_ERROR("real_output index (" << src_entr.real_output << ")bigger than output_keys.size()=" << src_entr.outputs.size());
++        LOG_ERROR("input rejected: real output index is out of range for this input");
+         return false;
+       }
+       summary_inputs_money += src_entr.amount;
+@@ -372,11 +370,7 @@ namespace cryptonote
+       //check that derivated key is equal with real output key
+       if(!(in_ephemeral.pub == src_entr.outputs[src_entr.real_output].second.dest) )
+       {
+-        LOG_ERROR("derived public key mismatch with output public key at index " << idx << ", real out " << src_entr.real_output << "! "<< ENDL << "derived_key:"
+-          << string_tools::pod_to_hex(in_ephemeral.pub) << ENDL << "real output_public_key:"
+-          << string_tools::pod_to_hex(src_entr.outputs[src_entr.real_output].second.dest) );
+-        LOG_ERROR("amount " << src_entr.amount << ", rct " << src_entr.rct);
+-        LOG_ERROR("tx pubkey " << src_entr.real_out_tx_key << ", real_output_in_tx_index " << src_entr.real_output_in_tx_index);
++        LOG_ERROR("input rejected: derived key does not equal the referenced output key");
+         return false;
+       }
+ 
+@@ -507,11 +501,9 @@ namespace cryptonote
+       crypto::hash tx_prefix_hash;
+       get_transaction_prefix_hash(tx, tx_prefix_hash);
+ 
+-      std::stringstream ss_ring_s;
+       size_t i = 0;
+       for(const tx_source_entry& src_entr:  sources)
+       {
+-        ss_ring_s << "pub_keys:" << ENDL;
+         std::vector<const crypto::public_key*> keys_ptrs;
+         std::vector<crypto::public_key> keys(src_entr.outputs.size());
+         size_t ii = 0;
+@@ -519,7 +511,6 @@ namespace cryptonote
+         {
+           keys[ii] = rct2pk(o.second.dest);
+           keys_ptrs.push_back(&keys[ii]);
+-          ss_ring_s << o.second.dest << ENDL;
+           ++ii;
+         }
+ 
+@@ -528,13 +519,8 @@ namespace cryptonote
+         sigs.resize(src_entr.outputs.size());
+         if (!zero_secret_key)
+           crypto::generate_ring_signature(tx_prefix_hash, boost::get<txin_to_key>(tx.vin[i]).k_image, keys_ptrs, in_contexts[i].in_ephemeral.sec, src_entr.real_output, sigs.data());
+-        ss_ring_s << "signatures:" << ENDL;
+-        std::for_each(sigs.begin(), sigs.end(), [&](const crypto::signature& s){ss_ring_s << s << ENDL;});
+-        ss_ring_s << "prefix_hash:" << tx_prefix_hash << ENDL << "in_ephemeral_key: " << crypto::secret_key_explicit_print_ref{in_contexts[i].in_ephemeral.sec} << ENDL << "real_output: " << src_entr.real_output << ENDL;
+         i++;
+       }
+-
+-      MCINFO("construct_tx", "transaction_created: " << get_transaction_hash(tx) << ENDL << obj_to_json_str(tx) << ENDL << ss_ring_s.str());
+     }
+     else
+     {
+@@ -643,8 +629,6 @@ namespace cryptonote
+       memwipe(inSk.data(), inSk.size() * sizeof(rct::ctkey));
+ 
+       CHECK_AND_ASSERT_MES(tx.vout.size() == outSk.size(), false, "outSk size does not match vout");
+-
+-      MCINFO("construct_tx", "transaction_created: " << get_transaction_hash(tx) << ENDL << obj_to_json_str(tx) << ENDL);
+     }
+ 
+     tx.invalidate_hashes();
+diff --git a/src/device/device_default.cpp b/src/device/device_default.cpp
+index c770a6e..f9a3678 100644
+--- a/src/device/device_default.cpp
++++ b/src/device/device_default.cpp
+@@ -324,8 +324,7 @@ namespace hw {
+             // sending to the recipient; derivation = r*A (or s*C in the subaddress scheme)
+                 const crypto::secret_key &tx_privkey{dst_entr.is_subaddress && need_additional_txkeys ? additional_txkey.sec : tx_key};
+                 r = generate_key_derivation(dst_entr.addr.m_view_public_key, tx_privkey, derivation);
+-                CHECK_AND_ASSERT_MES(r, false, "at creation outs: failed to generate_key_derivation("
+-                    << dst_entr.addr.m_view_public_key << ", " << crypto::secret_key_explicit_print_ref{tx_privkey} << ")");
++                CHECK_AND_ASSERT_MES(r, false, "at creation outs: failed to generate_key_derivation for the destination");
+             }
+ 
+             if (need_additional_txkeys)
+diff --git a/src/wallet/wallet2.cpp b/src/wallet/wallet2.cpp
+index 7e3eed2..ee209bb 100644
+--- a/src/wallet/wallet2.cpp
++++ b/src/wallet/wallet2.cpp
+@@ -10995,7 +10995,7 @@ bool wallet2::light_wallet_key_image_is_ours(const crypto::key_image& key_image,
+   const account_keys& ack = get_account().get_keys();
+   crypto::key_derivation derivation;
+   bool r = crypto::generate_key_derivation(tx_public_key, ack.m_view_secret_key, derivation);
+-  CHECK_AND_ASSERT_MES(r, false, "failed to generate_key_derivation(" << tx_public_key << ", " << crypto::secret_key_explicit_print_ref{ack.m_view_secret_key} << ")");
++  CHECK_AND_ASSERT_MES(r, false, "failed to generate_key_derivation for this output");
+ 
+   r = crypto::derive_public_key(derivation, out_index, ack.m_account_address.m_spend_public_key, in_ephemeral.pub);
+   CHECK_AND_ASSERT_MES(r, false, "failed to derive_public_key (" << derivation << ", " << out_index << ", " << ack.m_account_address.m_spend_public_key << ")");
+@@ -11003,7 +11003,7 @@ bool wallet2::light_wallet_key_image_is_ours(const crypto::key_image& key_image,
+   crypto::derive_secret_key(derivation, out_index, ack.m_spend_secret_key, in_ephemeral.sec);
+   crypto::public_key out_pkey_test;
+   r = crypto::secret_key_to_public_key(in_ephemeral.sec, out_pkey_test);
+-  CHECK_AND_ASSERT_MES(r, false, "failed to secret_key_to_public_key(" << crypto::secret_key_explicit_print_ref{in_ephemeral.sec} << ")");
++  CHECK_AND_ASSERT_MES(r, false, "failed to secret_key_to_public_key for the ephemeral key");
+   CHECK_AND_ASSERT_MES(in_ephemeral.pub == out_pkey_test, false, "derived secret key doesn't match derived public key");
+ 
+   crypto::generate_key_image(in_ephemeral.pub, in_ephemeral.sec, calculated_key_image);

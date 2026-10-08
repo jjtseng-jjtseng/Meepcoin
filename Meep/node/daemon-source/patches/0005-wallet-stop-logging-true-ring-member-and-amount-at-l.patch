@@ -1,0 +1,70 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: tseng <tseng.jayj@gmail.com>
+Date: Sat, 19 Sep 2026 17:20:00 -0400
+Subject: [PATCH] wallet: stop logging true ring member and amount at level 0
+
+tools::detail::print_source_entry logged, at LOG_PRINT_L0, the spend
+amount, the real_output index, real_output_in_tx_index and every ring
+members global output index, for EVERY input of EVERY transaction the
+wallet constructed. Level 0 is on by default, so an ordinary wallet log
+named the true spend inside each ring and the position of the real output
+inside its transaction. That is the decoy set defeated, in plaintext, for
+anyone who ever reads, ships or pastes a wallet log.
+
+Inherited from the Monero base; not introduced by MeepCoin.
+
+The helper and both of its call sites -- the non-RingCT path in
+transfer_selected and the RingCT path in transfer_selected_rct -- are
+DELETED. Demoting the level is not the fix: the leak would still be one
+--log-level away, and a reviewer cannot see it in a log that was not
+captured at that level.
+
+Nothing about transaction construction or output selection changes. The
+src.real_output and src.real_output_in_tx_index assignments are untouched:
+they are required to build the transaction. Only the disclosure is removed.
+
+Consensus, MeepHash, rewards, difficulty, the browser and the native helper
+are not touched. Daemon behaviour is unchanged; this is a wallet-only patch.
+---
+ src/wallet/wallet2.cpp | 2 --
+ src/wallet/wallet2.h   | 7 -------
+ 2 files changed, 9 deletions(-)
+
+diff --git a/src/wallet/wallet2.cpp b/src/wallet/wallet2.cpp
+index 930aeac..7e3eed2 100644
+--- a/src/wallet/wallet2.cpp
++++ b/src/wallet/wallet2.cpp
+@@ -9982,7 +9982,6 @@ void wallet2::transfer_selected(const std::vector<cryptonote::tx_destination_ent
+     src.real_output = it_to_replace - src.outputs.begin();
+     src.real_output_in_tx_index = td.m_internal_output_index;
+     src.multisig_kLRki = rct::multisig_kLRki({rct::zero(), rct::zero(), rct::zero(), rct::zero()});
+-    detail::print_source_entry(src);
+     ++out_index;
+   }
+   LOG_PRINT_L2("outputs prepared");
+@@ -10210,7 +10209,6 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
+       src.multisig_kLRki = {.k = {}, .L = {}, .R = {}, .ki = rct::ki2rct(td.m_key_image)};
+     else
+       src.multisig_kLRki = rct::multisig_kLRki({rct::zero(), rct::zero(), rct::zero(), rct::zero()});
+-    detail::print_source_entry(src);
+     ++out_index;
+   }
+   LOG_PRINT_L2("outputs prepared");
+diff --git a/src/wallet/wallet2.h b/src/wallet/wallet2.h
+index b18e9d8..f58754f 100644
+--- a/src/wallet/wallet2.h
++++ b/src/wallet/wallet2.h
+@@ -2714,13 +2714,6 @@ namespace tools
+       }
+     }
+     //----------------------------------------------------------------------------------------------------
+-    inline void print_source_entry(const cryptonote::tx_source_entry& src)
+-    {
+-      std::string indexes;
+-      std::for_each(src.outputs.begin(), src.outputs.end(), [&](const cryptonote::tx_source_entry::output_entry& s_e) { indexes += boost::to_string(s_e.first) + " "; });
+-      LOG_PRINT_L0("amount=" << cryptonote::print_money(src.amount) << ", real_output=" <<src.real_output << ", real_output_in_tx_index=" << src.real_output_in_tx_index << ", indexes: " << indexes);
+-    }
+-    //----------------------------------------------------------------------------------------------------
+   }
+   //----------------------------------------------------------------------------------------------------
+ }

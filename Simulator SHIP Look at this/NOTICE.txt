@@ -1,0 +1,11 @@
+MeepCoin Local Lab
+
+vendor/meephash contains the MeepHash-W v2 WebAssembly module and binary, context wrapper, target helpers, known-answer vectors, and original MIT license from MeepCoin source commit d58d6b20bfb58755da8650b33f302a454fc785c7.
+
+Pinned SHA-256:
+meepow.mjs  5a61038d0d40aaaf4f33d779dfa9e0b4ee7e68817eabdf8de57465711ef49e31
+meepow.wasm a039b57ed7d874792eced9044054764c6c3d10c316581efe64721ff52b3988a7
+
+Demo credits cannot be spent, transferred, or redeemed. This app is not native MeepCoin consensus or a public cryptocurrency network.
+
+Runtime dependencies: Electron (MIT), ws (MIT), selfsigned (MIT), and dependencies recorded in package-lock.json. Electron includes third-party license notices. Packaging uses electron-builder and NSIS.

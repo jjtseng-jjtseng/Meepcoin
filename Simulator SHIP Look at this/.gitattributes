@@ -1,0 +1,3 @@
+# Integrity-pinned artifacts must retain their exact bytes on every platform.
+* text=auto eol=lf
+vendor/meephash/** -text

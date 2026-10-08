@@ -1,0 +1,717 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: tseng <tseng.jayj@gmail.com>
+Date: Tue, 15 Sep 2026 16:05:00 -0400
+Subject: [PATCH] consensus: fix the MeepHash seed schedule and stop priming
+ RandomX
+
+MeepCoin block proof-of-work is MeepHash-W v2 at every height, but two
+inherited Monero RandomX paths were still live. One could change consensus;
+the other did unused work at startup. No consensus value changes.
+
+THE SEED SCHEDULE IS NO LONGER ENVIRONMENT-DEPENDENT
+
+rx_seedheight() picks which block's id seeds MeepHash at height h: the daemon
+feeds that id as both the MeepHash epoch key and its delayed-seed input. It
+read SEEDHASH_EPOCH_BLOCKS and SEEDHASH_EPOCH_LAG from the environment and let
+any power of two up to 2048 and 64 replace the constants. Measured on the
+pinned source: SEEDHASH_EPOCH_BLOCKS=1024 put height 1089 on seed 1024 instead
+of 0, and SEEDHASH_EPOCH_LAG=32 put heights 2081 and 2112 on seed 2048
+instead of 0. Two identical binaries could therefore disagree about the
+proof-of-work of a block from the first epoch boundary on. Both reads are
+removed; the rule is fixed at compile time:
+
+  seed_height(h) = 0                               when h <= 2048 + 64
+                 = (h - 64 - 1) & ~(2048 - 1)      otherwise
+
+rx_seedheights() uses the same constant for the announced next seed. Main
+chain, block template, get_miner_data, alternative chain and the template RPC
+all call these two functions, unchanged. The block id AT the seed height is
+still what MeepHash is given.
+
+NO RANDOMX PRIMING FOR BLOCK PROOF-OF-WORK
+
+Blockchain::init, pop_blocks, switch_to_alternative_blockchain and
+handle_block_to_main_chain called rx_set_main_seedhash(), which starts a
+background RandomX main-cache (and, with MONERO_RANDOMX_FULL_MEM, dataset)
+initialization. Nothing on the block path reads that cache: get_block_longhash
+and get_altblock_longhash call meep_slow_hash. Its large-page allocation threw
+the caught std::bad_alloc logged at every daemon start. The four calls are
+removed; the seed id computed in the reorg and add-block paths is kept for the
+miner notification it feeds. The built-in miner's rx_set_miner_thread(), which
+marked the thread as a RandomX miner and allocated and initialized the full
+RandomX dataset, is removed for the same reason: the miner hashes through
+get_block_longhash.
+
+RETAINED, DELIBERATELY
+
+RandomX hashing for RPC payments (src/rpc/rpc_payment.cpp in the daemon,
+src/wallet/wallet_rpc_payments.cpp in the wallet) is not block proof-of-work
+and is unchanged; without the removed priming it uses RandomX's secondary
+light-mode cache for the requested seed. rx_set_main_seedhash(),
+rx_set_miner_thread() and external/randomx remain, uncalled or
+RPC-payment-only. core::get_block_sync_size() still reads
+SEEDHASH_EPOCH_BLOCKS: it clamps how many blocks one sync request may carry
+and changes no seed height.
+
+TESTS
+
+  meepcoin-runtime-quarantine-test        79 passed, 0 failed (was 45)
+  meepcoin_runtime_quarantine_guards.sh   89 passed, 0 failed (was 81)
+
+The new runtime sections check the boundaries 0, 2112, 2113, 4160 and 4161,
+every height 0..8400 against the independently written rule, and re-execute
+the test binary as child processes with six adversarial SEEDHASH_EPOCH_*
+settings: seed heights, seed block ids and MeepHash outputs must be
+byte-identical to the unset baseline. The same test built against the pinned
+rx-slow-hash.c fails four of those six (75 passed, 4 failed). The committed v16
+daemon-generated block vectors are reproduced through the main-chain
+derivation and get_altblock_longhash, with the difficulty-500 target boundary.
+The guards assert no caller of rx_set_main_seedhash or rx_set_miner_thread,
+rx_slow_hash only in the two RPC-payment files, and the exact set of
+seed-height callers.
+
+OUT OF SCOPE, DELIBERATELY UNCHANGED
+
+MeepHash sources and build inputs, genesis values, block vectors, target
+comparison, rewards, emission, timestamps, difficulty, hardforks, ports,
+address prefixes and wallet formats are byte-identical.
+
+---
+ src/crypto/hash-ops.h                         |   4 +
+ src/crypto/rx-slow-hash.c                     |  65 +---
+ src/cryptonote_basic/miner.cpp                |  12 +-
+ src/cryptonote_core/blockchain.cpp            |  27 +-
+ .../meepcoin_runtime_quarantine_guards.sh     |  44 +++
+ .../meepcoin_runtime_quarantine_test.cpp      | 345 +++++++++++++++++-
+ 6 files changed, 425 insertions(+), 72 deletions(-)
+
+diff --git a/src/crypto/hash-ops.h b/src/crypto/hash-ops.h
+index 9d3abc3f8135ae57d9a3b607ea0595cfab1198bd..ce34c77150308c545e53bf1b75901d8b3c082351 100644
+--- a/src/crypto/hash-ops.h
++++ b/src/crypto/hash-ops.h
+@@ -93,6 +93,10 @@ bool tree_branch_hash(const char hash[HASH_SIZE], const char (*branch)[HASH_SIZE
+ bool is_branch_in_tree(const char hash[HASH_SIZE], const char root[HASH_SIZE], const char (*branch)[HASH_SIZE], size_t depth, uint32_t path);
+ 
+ #define RX_BLOCK_VERSION	12
++/* MeepCoin: rx_seedheight()/rx_seedheights() are the CONSENSUS seed schedule of MeepHash block
++   proof-of-work -- fixed 2048/64, no environment input. The daemon never primes RandomX for block
++   PoW: rx_set_main_seedhash() and rx_set_miner_thread() have no caller in it, and rx_slow_hash() is
++   used only by the RPC-payment paths. */
+ void rx_slow_hash_allocate_state(void);
+ void rx_slow_hash_free_state(void);
+ uint64_t rx_seedheight(const uint64_t height);
+diff --git a/src/crypto/rx-slow-hash.c b/src/crypto/rx-slow-hash.c
+index 672144fcfcfbf1ab36ca87092b50dcf439f5b229..82f3130d7d0e230879b2170e59984f23fd101865 100644
+--- a/src/crypto/rx-slow-hash.c
++++ b/src/crypto/rx-slow-hash.c
+@@ -133,60 +133,31 @@ static inline int enabled_flags(void) {
+   return flags;
+ }
+ 
+-#define SEEDHASH_EPOCH_BLOCKS	2048	/* Must be same as BLOCKS_SYNCHRONIZING_MAX_COUNT in cryptonote_config.h */
+-#define SEEDHASH_EPOCH_LAG		64
+-
+-static inline int is_power_of_2(uint64_t n) { return n && (n & (n-1)) == 0; }
+-
+-static int get_seedhash_epoch_lag(void)
+-{
+-  static unsigned int lag = (unsigned int)-1;
+-  if (lag != (unsigned int)-1)
+-    return lag;
+-  const char *e = getenv("SEEDHASH_EPOCH_LAG");
+-  if (e)
+-  {
+-    lag = atoi(e);
+-    if (lag > SEEDHASH_EPOCH_LAG || !is_power_of_2(lag))
+-      lag = SEEDHASH_EPOCH_LAG;
+-  }
+-  else
+-  {
+-    lag = SEEDHASH_EPOCH_LAG;
+-  }
+-  return lag;
+-}
+-
+-static unsigned int get_seedhash_epoch_blocks(void)
+-{
+-  static unsigned int blocks = (unsigned int)-1;
+-  if (blocks != (unsigned int)-1)
+-    return blocks;
+-  const char *e = getenv("SEEDHASH_EPOCH_BLOCKS");
+-  if (e)
+-  {
+-    blocks = atoi(e);
+-    if (blocks < 2 || blocks > SEEDHASH_EPOCH_BLOCKS || !is_power_of_2(blocks))
+-      blocks = SEEDHASH_EPOCH_BLOCKS;
+-  }
+-  else
+-  {
+-    blocks = SEEDHASH_EPOCH_BLOCKS;
+-  }
+-  return blocks;
+-}
++/*
++ * MeepCoin: THE SEED-HEIGHT SCHEDULE IS CONSENSUS, AND IT IS FIXED AT COMPILE TIME.
++ *
++ * MeepCoin block proof-of-work is MeepHash-W v2, never RandomX, but it still uses this schedule:
++ * the block id at rx_seedheight(h) is the 32-byte seed the daemon feeds MeepHash as both its epoch
++ * key and its delayed-seed input (docs/BLOCK_CONSENSUS_VECTORS.md in the MeepCoin repository).
++ * Moving the schedule moves every block hash from the first epoch boundary on: a hard fork.
++ *
++ * Monero let two process-environment variables shrink both constants, a test-harness convenience
++ * for RandomX epochs. Here that meant two identical binaries could derive different seed heights,
++ * and therefore different proof-of-work, from different environments. Those reads are removed and
++ * nothing replaces them. 2048 and 64 are meepow::v2::EPOCH_LENGTH and EPOCH_DELAY.
++ */
++#define SEEDHASH_EPOCH_BLOCKS	((uint64_t)2048)	/* Must be same as BLOCKS_SYNCHRONIZING_MAX_COUNT in cryptonote_config.h */
++#define SEEDHASH_EPOCH_LAG		((uint64_t)64)
+ 
+ uint64_t rx_seedheight(const uint64_t height) {
+-  const uint64_t seedhash_epoch_lag = get_seedhash_epoch_lag();
+-  const uint64_t seedhash_epoch_blocks = get_seedhash_epoch_blocks();
+-  uint64_t s_height =  (height <= seedhash_epoch_blocks+seedhash_epoch_lag) ? 0 :
+-                       (height - seedhash_epoch_lag - 1) & ~(seedhash_epoch_blocks-1);
++  uint64_t s_height =  (height <= SEEDHASH_EPOCH_BLOCKS+SEEDHASH_EPOCH_LAG) ? 0 :
++                       (height - SEEDHASH_EPOCH_LAG - 1) & ~(SEEDHASH_EPOCH_BLOCKS-1);
+   return s_height;
+ }
+ 
+ void rx_seedheights(const uint64_t height, uint64_t *seedheight, uint64_t *nextheight) {
+   *seedheight = rx_seedheight(height);
+-  *nextheight = rx_seedheight(height + get_seedhash_epoch_lag());
++  *nextheight = rx_seedheight(height + SEEDHASH_EPOCH_LAG);
+ }
+ 
+ static void rx_alloc_dataset(randomx_flags flags, randomx_dataset** dataset, int ignore_env)
+diff --git a/src/cryptonote_basic/miner.cpp b/src/cryptonote_basic/miner.cpp
+index fd13ff74d1fca533c4ac716113e91d853858c9f7..bd6a9da0743eef98ab41975da4c8521d22859fb3 100644
+--- a/src/cryptonote_basic/miner.cpp
++++ b/src/cryptonote_basic/miner.cpp
+@@ -523,7 +523,6 @@ namespace cryptonote
+   bool miner::worker_thread()
+   {
+     const uint32_t th_local_index = m_thread_index++; // atomically increment, getting value before increment
+-    bool rx_set = false;
+ 
+     MLOG_SET_THREAD_NAME(std::string("[miner ") + std::to_string(th_local_index) + "]");
+     MGINFO("Miner thread was started ["<< th_local_index << "]");
+@@ -576,13 +575,10 @@ namespace cryptonote
+       b.nonce = nonce;
+       crypto::hash h;
+ 
+-      if ((b.major_version >= RX_BLOCK_VERSION) && !rx_set)
+-      {
+-        // Must be non-zero value because 0 means "not a miner thread, run with secure JIT" in rx-slow-hash.c
+-        crypto::rx_set_miner_thread(th_local_index + 1, tools::get_max_concurrency());
+-        rx_set = true;
+-      }
+-
++      // MeepCoin: no RandomX miner-thread setup. Monero marked this thread as a RandomX miner and
++      // allocated and initialized the full RandomX dataset here, for RandomX block hashing. m_gbh is
++      // get_block_longhash, which is MeepHash-W v2; the flag is read only by RandomX VM creation, and
++      // the dataset was never used.
+       m_gbh(b, height, NULL, tools::get_max_concurrency(), h);
+ 
+       if(check_hash(h, local_diff))
+diff --git a/src/cryptonote_core/blockchain.cpp b/src/cryptonote_core/blockchain.cpp
+index 30e4e2def23cb13ac6066cdeec410a019875bc92..a13999e0fa3900da42225fea7eb53fdcce8b95fc 100644
+--- a/src/cryptonote_core/blockchain.cpp
++++ b/src/cryptonote_core/blockchain.cpp
+@@ -486,12 +486,12 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
+       return false;
+   }
+ 
+-  if (m_hardfork->get_current_version() >= RX_BLOCK_VERSION)
+-  {
+-    const crypto::hash seedhash = get_block_id_by_height(crypto::rx_seedheight(m_db->height()));
+-    if (seedhash != crypto::null_hash)
+-      rx_set_main_seedhash(seedhash.data, tools::get_max_concurrency());
+-  }
++  // MeepCoin: NO RANDOMX PRIMING. Monero started RandomX main-cache (and, with MONERO_RANDOMX_FULL_MEM,
++  // dataset) initialization here for its block proof-of-work. MeepCoin block PoW is MeepHash-W v2,
++  // which never reads that cache; the unused initialization is what logged a caught std::bad_alloc at
++  // startup when its large-page allocation failed. Removed here and in pop_blocks(),
++  // switch_to_alternative_blockchain() and handle_block_to_main_chain(). The seed schedule
++  // (rx_seedheight, now fixed at compile time) still selects MeepHash's seed block.
+ 
+   return true;
+ }
+@@ -607,12 +607,7 @@ void Blockchain::pop_blocks(uint64_t nblocks)
+ 
+   if (stop_batch)
+     m_db->batch_stop();
+-
+-  if (m_hardfork->get_current_version() >= RX_BLOCK_VERSION)
+-  {
+-    const crypto::hash seedhash = get_block_id_by_height(crypto::rx_seedheight(m_db->height()));
+-    rx_set_main_seedhash(seedhash.data, tools::get_max_concurrency());
+-  }
++  // MeepCoin: no RandomX priming after popping blocks (see the note at the end of Blockchain::init).
+ }
+ //------------------------------------------------------------------
+ // This function tells BlockchainDB to remove the top block from the
+@@ -1236,8 +1231,8 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
+     }
+   }
+ 
+-  if (m_hardfork->get_current_version() >= RX_BLOCK_VERSION)
+-    rx_set_main_seedhash(seedhash.data, tools::get_max_concurrency());
++  // MeepCoin: no RandomX priming after a reorganization. seedhash above is still needed: it is what the
++  // miner notification announces for the new tip.
+ 
+   MGINFO_GREEN("REORGANIZE SUCCESS! on height: " << split_height << ", new blockchain size: " << m_db->height());
+   return true;
+@@ -4596,8 +4591,8 @@ leave:
+   for (const auto& notifier: m_block_notifiers)
+     notifier(new_height - 1, {std::addressof(bl), 1});
+ 
+-  if (m_hardfork->get_current_version() >= RX_BLOCK_VERSION)
+-    rx_set_main_seedhash(seedhash.data, tools::get_max_concurrency());
++  // MeepCoin: no RandomX priming after adding a block. seedhash above is still needed for the miner
++  // notification.
+ 
+   return true;
+ }
+diff --git a/src/meepcoin_genesis/meepcoin_runtime_quarantine_guards.sh b/src/meepcoin_genesis/meepcoin_runtime_quarantine_guards.sh
+index 205333c10ee89c1756e6cbd5594fc7b6fde765fc..595bc888f3b4cb985e8bc4498ae43cfdc16b88fc 100644
+--- a/src/meepcoin_genesis/meepcoin_runtime_quarantine_guards.sh
++++ b/src/meepcoin_genesis/meepcoin_runtime_quarantine_guards.sh
+@@ -209,6 +209,50 @@ printf '%s\n' "$CTOR" | grep -q 'ub_ctx_resolvconf' \
+   || bad "the system resolver is still used by default"
+ present src/common/dns_utils.h 'get_record' "generic DNS/OpenAlias API is still present"
+ 
++# ---------------------------------------------------------------- 5b. seed schedule and RandomX priming
++echo
++echo "-- the seed schedule reads no environment; RandomX is not primed for block PoW --"
++
++absent src/crypto/rx-slow-hash.c 'getenv("SEEDHASH_EPOCH' "rx-slow-hash.c reads no SEEDHASH_EPOCH_* environment variable"
++present src/crypto/rx-slow-hash.c 'define SEEDHASH_EPOCH_BLOCKS[[:space:]]*((uint64_t)2048)' "the epoch length is the compile-time constant 2048"
++present src/crypto/rx-slow-hash.c 'define SEEDHASH_EPOCH_LAG[[:space:]]*((uint64_t)64)' "the epoch lag is the compile-time constant 64"
++
++# No production caller primes RandomX: rx_set_main_seedhash and rx_set_miner_thread are called nowhere
++# outside their own definition (hash-ops.h declares them; rx-slow-hash.c defines them).
++for fn in rx_set_main_seedhash rx_set_miner_thread; do
++  callers=$(grep -rln "$fn(" src --include='*.c' --include='*.cpp' --include='*.inl' \
++            | grep -v '^src/crypto/rx-slow-hash.c$' \
++            | while read -r f; do code_grep "$f" "$fn(" && echo "$f"; done)
++  if [ -z "$callers" ]; then ok "$fn has no caller"; else bad "$fn has no caller (found: $callers)"; fi
++done
++
++# RandomX hashing that is deliberately RETAINED: the RPC-payment server and the wallet's RPC-payment
++# client. Nothing on the block proof-of-work path calls rx_slow_hash.
++rx_callers=$(grep -rln 'rx_slow_hash(' src --include='*.c' --include='*.cpp' --include='*.inl' \
++             | grep -v '^src/crypto/rx-slow-hash.c$' \
++             | while read -r f; do code_grep "$f" 'rx_slow_hash(' && echo "$f"; done | LC_ALL=C sort | tr '\n' ' ')
++if [ "$rx_callers" = "src/rpc/rpc_payment.cpp src/wallet/wallet_rpc_payments.cpp " ]; then
++  ok "rx_slow_hash is called only by the retained RPC-payment paths"
++else
++  bad "rx_slow_hash is called only by the retained RPC-payment paths (found: $rx_callers)"
++fi
++
++# Every seed-height caller: the block template, get_miner_data, main- and alternative-chain PoW, the
++# miner notification after add/reorg (blockchain.cpp), the main-chain PoW (cryptonote_tx_utils.cpp) and
++# the template RPC's next seed (core_rpc_server.cpp). One function, one rule.
++sh_callers=$(grep -rlnE 'rx_seedheights?\(' src --include='*.c' --include='*.cpp' --include='*.inl' \
++             | grep -v '^src/crypto/rx-slow-hash.c$' | grep -v '^src/meepcoin_genesis/' \
++             | while read -r f; do code_grep "$f" 'rx_seedheight' && echo "$f"; done | LC_ALL=C sort | tr '\n' ' ')
++if [ "$sh_callers" = "src/cryptonote_core/blockchain.cpp src/cryptonote_core/cryptonote_tx_utils.cpp src/rpc/core_rpc_server.cpp " ]; then
++  ok "rx_seedheight/rx_seedheights are called only by the block template, PoW, notification and template-RPC paths"
++else
++  bad "rx_seedheight/rx_seedheights callers are the known block paths (found: $sh_callers)"
++fi
++
++# Retained and NOT the seed schedule: the block-sync batch clamp still reads SEEDHASH_EPOCH_BLOCKS. It
++# bounds how many blocks one sync request may carry; it does not change any seed height.
++present src/cryptonote_core/cryptonote_core.cpp 'getenv("SEEDHASH_EPOCH_BLOCKS")' "the block-sync batch clamp (not the seed schedule) is the one remaining reader, and is retained"
++
+ # ---------------------------------------------------------------- 6. scope invariants
+ echo
+ echo "-- scope invariants: nothing else moved --"
+diff --git a/src/meepcoin_genesis/meepcoin_runtime_quarantine_test.cpp b/src/meepcoin_genesis/meepcoin_runtime_quarantine_test.cpp
+index eab3dbb58f962d1a861c48e912ffebdc486ea500..3ad801788ba50fe919538f9109d28b3730d72e5d 100644
+--- a/src/meepcoin_genesis/meepcoin_runtime_quarantine_test.cpp
++++ b/src/meepcoin_genesis/meepcoin_runtime_quarantine_test.cpp
+@@ -30,9 +30,20 @@
+ // BUILD_TESTS=OFF, so anything added there would never run. Same reasoning, and same shape, as
+ // meepcoin_hardfork_test.cpp and meepcoin_trust_anchor_test.cpp.
+ //
++// THE SEED SCHEDULE (patch 0004). rx_seedheight() -- which block's id seeds MeepHash at height h --
++// read SEEDHASH_EPOCH_BLOCKS and SEEDHASH_EPOCH_LAG from the environment, so the same binary could
++// derive a different seed, and therefore a different proof-of-work, depending on how it was started.
++// Because the old code cached the values on first use, setting a variable inside this process
++// proves nothing; section 4 re-executes THIS binary as child processes with adversarial values.
++// Section 5 checks the committed, daemon-generated v16 block consensus vectors through the daemon's
++// own main-chain and alternative-chain entry points, and the target boundary.
++//
+ // LOCALHOST / PRIVATE DEVELOPMENT CHAIN. Dev/test coins with no monetary value.
+ 
++#include <boost/multiprecision/cpp_int.hpp>
++#include <climits>
+ #include <cstdint>
++#include <unistd.h>
+ #include <cstdio>
+ #include <cstdlib>
+ #include <cstring>
+@@ -44,6 +55,7 @@
+ #include "serialization/string.h"   // get_object_hash(blobdata) needs the std::string serializer
+ #include "cryptonote_basic/cryptonote_basic.h"
+ #include "cryptonote_basic/cryptonote_format_utils.h"
++#include "cryptonote_basic/difficulty.h"
+ #include "cryptonote_config.h"
+ #include "cryptonote_core/cryptonote_tx_utils.h"
+ #include "common/updates.h"
+@@ -198,6 +210,329 @@ void test_genesis_values_unchanged()
+       "MEEPCOIN_GENESIS_TIMESTAMP is still 1785283200");
+ }
+ 
++// ---------------------------------------------------------------------------------------------
++// 4. The seed schedule is a compile-time consensus rule: exact boundaries, and no environment input.
++// ---------------------------------------------------------------------------------------------
++uint64_t frozen_seed_height(uint64_t h)
++{
++  // The frozen rule, written out independently of rx-slow-hash.c.
++  return (h <= 2048 + 64) ? 0 : (h - 64 - 1) & ~(uint64_t)(2048 - 1);
++}
++
++const uint64_t g_schedule_heights[] = {
++  0, 1, 63, 64, 65, 1024, 1089, 2047, 2048, 2049, 2081, 2111, 2112, 2113, 2114, 3000, 4096,
++  4159, 4160, 4161, 4162, 6208, 6209, 1000000,
++};
++
++/** A deterministic stand-in chain: the id of the block at height h. */
++crypto::hash synthetic_block_id(uint64_t h)
++{
++  const std::string tag = "meepcoin-seed-schedule-block-" + std::to_string(h);
++  return crypto::cn_fast_hash(tag.data(), tag.size());
++}
++
++const std::string &schedule_blob()
++{
++  // A 76-byte hashing blob shaped like a v16 header (nonce at offset 39); only determinism matters.
++  static const std::string blob = [] {
++    std::string b(76, '\0');
++    b[0] = 16; b[1] = 16;
++    for (size_t i = 2; i < b.size(); ++i) b[i] = (char)(i * 7 + 3);
++    return b;
++  }();
++  return blob;
++}
++
++/**
++ * Child mode: "<height> <seed> <next> <seed block id> <MeepHash>" per line. The MeepHash is the
++ * derived context's output: the seed block id at the derived seed height, fed to meep_slow_hash
++ * exactly as the main-chain get_block_longhash does, so a moved seed height shows up as a moved hash.
++ * (get_block_longhash itself cannot be used here: with no Blockchain it always hashes with the zero
++ * genesis-generation seed.)
++ */
++int seed_schedule_child()
++{
++  for (uint64_t h : g_schedule_heights)
++  {
++    uint64_t seed = 0, next = 0;
++    crypto::rx_seedheights(h, &seed, &next);
++    const crypto::hash id = synthetic_block_id(crypto::rx_seedheight(h));
++    std::string line = std::to_string(h) + " " + std::to_string(seed) + " " + std::to_string(next) + " " + hex(id);
++    if (h == 2112 || h == 2113 || h == 4161 || h == 1089 || h == 2081)
++    {
++      crypto::hash pow;
++      meep_slow_hash(id.data, h, schedule_blob().data(), schedule_blob().size(), pow.data);
++      line += " " + hex(pow);
++    }
++    printf("%s\n", line.c_str());
++  }
++  meep_slow_hash_free_state();
++  return 0;
++}
++
++void test_seed_schedule_is_fixed()
++{
++  printf("\n-- seed schedule: the frozen 2048/64 rule, at the boundaries --\n");
++  static const uint64_t exact[][2] = {
++    { 0, 0 }, { 2112, 0 }, { 2113, 2048 }, { 4160, 2048 }, { 4161, 4096 },
++  };
++  for (const auto &e : exact)
++  {
++    char label[160];
++    snprintf(label, sizeof(label), "seed height of %llu is %llu (got %llu)",
++             (unsigned long long)e[0], (unsigned long long)e[1], (unsigned long long)crypto::rx_seedheight(e[0]));
++    chk(crypto::rx_seedheight(e[0]) == e[1], label);
++  }
++
++  // Every height up to three epochs past the second boundary: rx_seedheight (main chain and
++  // alternative chain) and rx_seedheights (block template, get_miner_data, RPC) are the same rule.
++  bool all = true, next_ok = true;
++  for (uint64_t h = 0; h <= 8400; ++h)
++  {
++    uint64_t seed = 0, next = 0;
++    crypto::rx_seedheights(h, &seed, &next);
++    if (crypto::rx_seedheight(h) != frozen_seed_height(h) || seed != frozen_seed_height(h)) all = false;
++    if (next != frozen_seed_height(h + 64)) next_ok = false;
++  }
++  chk(all, "rx_seedheight and rx_seedheights equal the frozen rule at every height 0..8400");
++  chk(next_ok, "the announced next seed height is the frozen rule at height + 64, at every height 0..8400");
++  chk(crypto::rx_seedheight(1000000) == 999424, "seed height of 1000000 is 999424");
++}
++
++void test_seed_schedule_ignores_environment(const char *argv0)
++{
++  printf("\n-- seed schedule: child processes with adversarial SEEDHASH_EPOCH_* values --\n");
++
++  // Every one of these moved at least one seed height in the inherited code (for example 1024 put
++  // height 1089 on seed 1024, and a lag of 32 put height 2081 on seed 2048). The last two were
++  // already ignored by it, and must stay ignored.
++  static const char *const envs[] = {
++    "SEEDHASH_EPOCH_BLOCKS=1024",
++    "SEEDHASH_EPOCH_LAG=32",
++    "SEEDHASH_EPOCH_BLOCKS=2 SEEDHASH_EPOCH_LAG=1",
++    "SEEDHASH_EPOCH_BLOCKS=16 SEEDHASH_EPOCH_LAG=8",
++    "SEEDHASH_EPOCH_BLOCKS=4096",
++    "SEEDHASH_EPOCH_BLOCKS=garbage SEEDHASH_EPOCH_LAG=-5",
++  };
++
++  // The absolute path of THIS executable, resolved here: inside the child's shell /proc/self/exe
++  // would name the shell, not this test.
++  char exe[PATH_MAX] = {0};
++  const ssize_t exe_len = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
++  const std::string self = exe_len > 0 ? std::string(exe, (size_t)exe_len) : std::string(argv0 ? argv0 : "");
++  auto run_child = [&](const std::string &assignments, std::string &out) -> bool {
++    // env -u clears anything inherited first, so the baseline is truly unset.
++    const std::string cmd = "env -u SEEDHASH_EPOCH_BLOCKS -u SEEDHASH_EPOCH_LAG " + assignments + " '" + self
++      + "' --seed-schedule-child";
++    FILE *p = popen(cmd.c_str(), "r");
++    if (!p) return false;
++    char buf[512];
++    out.clear();
++    while (fgets(buf, sizeof(buf), p)) out += buf;
++    return pclose(p) == 0;
++  };
++
++  std::string baseline;
++  chk(run_child("", baseline), "child with SEEDHASH_EPOCH_BLOCKS and SEEDHASH_EPOCH_LAG unset ran");
++
++  // The baseline itself must be the frozen rule, not merely self-consistent.
++  bool baseline_rule = !baseline.empty();
++  size_t lines = 0;
++  for (size_t pos = 0; pos < baseline.size();)
++  {
++    size_t eol = baseline.find('\n', pos);
++    if (eol == std::string::npos) break;
++    const std::string l = baseline.substr(pos, eol - pos);
++    unsigned long long h = 0, s = 0, n = 0;
++    char idbuf[65] = {0};
++    if (sscanf(l.c_str(), "%llu %llu %llu %64s", &h, &s, &n, idbuf) != 4
++        || s != frozen_seed_height(h) || n != frozen_seed_height(h + 64)
++        || std::string(idbuf) != hex(synthetic_block_id(frozen_seed_height(h))))
++      baseline_rule = false;
++    ++lines;
++    pos = eol + 1;
++  }
++  chk(baseline_rule && lines == sizeof(g_schedule_heights) / sizeof(g_schedule_heights[0]),
++      "the unset baseline is the frozen rule: seed, next seed and seed block id at every probed height");
++
++  for (const char *e : envs)
++  {
++    std::string got;
++    const bool ran = run_child(e, got);
++    char label[200];
++    snprintf(label, sizeof(label), "[%s] child ran", e);
++    chk(ran, label);
++    snprintf(label, sizeof(label), "[%s] seed heights, seed block ids and MeepHash results are byte-identical to the unset baseline", e);
++    chk(ran && got == baseline, label);
++    if (ran && got != baseline) printf("        got:\n%s        want:\n%s", got.c_str(), baseline.c_str());
++  }
++}
++
++// ---------------------------------------------------------------------------------------------
++// 5. The committed v16 block consensus vectors, through the daemon's own entry points.
++// ---------------------------------------------------------------------------------------------
++struct block_vector
++{
++  uint64_t height, seed_height, difficulty;
++  const char *epoch_key, *block_hash, *prev_hash, *full_block_blob, *hashing_blob, *daemon_pow_hash;
++};
++
++// Generated from meepow/vectors/block_vectors_v16_devnet.json (sha256 d73d6413...690b0d), the committed,
++// daemon-generated block consensus vectors. Copied verbatim; nothing here is computed by this test.
++const block_vector g_v16_vectors[] = {
++  { 0ULL, 0ULL, 1ULL,
++    "871bc633e7fa6b1698e8d9864472b12850baa5c7dc9c56e02e9f476d1d875c74",
++    "871bc633e7fa6b1698e8d9864472b12850baa5c7dc9c56e02e9f476d1d875c74",
++    "0000000000000000000000000000000000000000000000000000000000000000",
++    "10108085a5d3060000000000000000000000000000000000000000000000000000000000000000214e0000020a01ff0001939298f2d82203f0d2a4ce0987104c2a012faa2c0e4f9d6692cdce578434575de531cda04457ec972101dcd49fb892af9ddd1c7f0d1a8ab718cbd510bb4919c33ec21c718bcf1a4425560000",
++    "10108085a5d3060000000000000000000000000000000000000000000000000000000000000000214e0000fe1358050f42768e6d0c16a3f6a09e5edd53b60f96b4250de25fba0f5b2fc50b01",
++    "3b754379d9c81d056a430834e8b5e5e90cb81748e63ee4535f9f62912698acd8" },
++  { 1ULL, 0ULL, 500ULL,
++    "871bc633e7fa6b1698e8d9864472b12850baa5c7dc9c56e02e9f476d1d875c74",
++    "88da0c2baa6e7c6011e7145e71f94e31ba51a076a3408f29f6116aa722a5ed87",
++    "871bc633e7fa6b1698e8d9864472b12850baa5c7dc9c56e02e9f476d1d875c74",
++    "1010d8cdaad306871bc633e7fa6b1698e8d9864472b12850baa5c7dc9c56e02e9f476d1d875c7497ad6a51020b01ff0101a1b9f5f1d82203e346440a1ab1f6a1984f654328cdfccc9ae23c3973ca2b33b323ebfe5467052f8621010e5a5ecbf1def7f5b944f64c7c69bf798e6fd9ca969cd18262ab1440718572410000",
++    "1010d8cdaad306871bc633e7fa6b1698e8d9864472b12850baa5c7dc9c56e02e9f476d1d875c7497ad6a51944d10106441c3f3d605e3910bf3fd3ae0da178a79d3adf56bbcaf8a72dc9bed01",
++    "2d813368a51e8841841a344e204bb78ea77b773f6725e9808b03e1d1c0041700" },
++  { 63ULL, 0ULL, 500ULL,
++    "871bc633e7fa6b1698e8d9864472b12850baa5c7dc9c56e02e9f476d1d875c74",
++    "318191b7deea2c1bb65190413d13bd5a243332ee787883238a26d715087703d1",
++    "f8a3793a4fc19d29f30bda067299535cef4fc82b0a0d194456f4b31c8c36fd8f",
++    "1010f3ceaad306f8a3793a4fc19d29f30bda067299535cef4fc82b0a0d194456f4b31c8c36fd8f79179e62024901ff3f018bb68ee1d82203e67e424530e1b02dfe858505891545b5effa472c9a6cb86c6f7e6017a72e0b90d62101248b76a0d160aead476894dbb35270083c995896d1b9e9eef02fec8446efcb700000",
++    "1010f3ceaad306f8a3793a4fc19d29f30bda067299535cef4fc82b0a0d194456f4b31c8c36fd8f79179e622ff5da5de68295ababe28b7d3c21453f9276fd1f94c4737605266ce0c9d93ca801",
++    "d38feca115a2254366ad76824fd5ab7bc5e6749ae2762a431cb7ed42ea652e00" },
++  { 64ULL, 0ULL, 500ULL,
++    "871bc633e7fa6b1698e8d9864472b12850baa5c7dc9c56e02e9f476d1d875c74",
++    "60f798654f97008c6c0c121d50838f91f36f5645a8dee0ca0bb5a87f74d1ad66",
++    "318191b7deea2c1bb65190413d13bd5a243332ee787883238a26d715087703d1",
++    "1010f3ceaad306318191b7deea2c1bb65190413d13bd5a243332ee787883238a26d715087703d1666e7fad024a01ff4001aaddebe0d82203bbda21e43c18410ac13fa5d06584e604cb7d36c3560fddb88f1ecf70247cd5c21a21017ba8dd8bb98d585f9ad8159707e60b7527493034224cbfb109543ff674ac19d00000",
++    "1010f3ceaad306318191b7deea2c1bb65190413d13bd5a243332ee787883238a26d715087703d1666e7fad35d9bf8dc24fcdc54fb33f3ea9f6494e1694480802b034bd158e5b9b520f561701",
++    "6c070dc3a22deb6ed8543588eceb0c667f46159903279fe33d2fde7437980b00" },
++  { 2047ULL, 0ULL, 500ULL,
++    "871bc633e7fa6b1698e8d9864472b12850baa5c7dc9c56e02e9f476d1d875c74",
++    "351b8b1007298279380c626545d94d564aca766492441f20703cca85a16c2615",
++    "540001a605ffeda811966f18c28830dfec1597b5796c9f59de55eaf81c30c8e5",
++    "1010fee1aad306540001a605ffeda811966f18c28830dfec1597b5796c9f59de55eaf81c30c8e548d1cecb02891001ffff0f01fd98cfc7d42203e286e63960b48be2a110e72825e15a6daff8cce5b9b3c6067815c18d3cad6e81082101d43014759dafcfdcce59c8f988cc400c1041619fd60de7834d5f9540d22a12ea0000",
++    "1010fee1aad306540001a605ffeda811966f18c28830dfec1597b5796c9f59de55eaf81c30c8e548d1cecbe231c63d781df3e9bdf787e1728eb6b0fa72c6ce55bd80204fd17d27e6edec8f01",
++    "6f3d62896b5a9045d13923e231e9e88198368738cf9af6f35fe7081173990300" },
++  { 2048ULL, 0ULL, 500ULL,
++    "871bc633e7fa6b1698e8d9864472b12850baa5c7dc9c56e02e9f476d1d875c74",
++    "f66b60ce6a36fadf91424164c663643432c049f2af10a8141fe32f07a41d305f",
++    "351b8b1007298279380c626545d94d564aca766492441f20703cca85a16c2615",
++    "1010ffe1aad306351b8b1007298279380c626545d94d564aca766492441f20703cca85a16c2615eb680a43028a1001ff801001b5c4acc7d4220398a140efa48555f592e278b29a1fb3912f1773058c96204b87e5ce1afdd5113e9d2101dce8c779b858ffd74dc1e046e8aaa68c27dc0b261f4912a37d76a3b24dc35b590000",
++    "1010ffe1aad306351b8b1007298279380c626545d94d564aca766492441f20703cca85a16c2615eb680a43121454804bb84f32af019995bd7a35e24607f788574f08798810242d1bd3bf2301",
++    "fc197b45244f3a9fdfc8897a3cf1f568706bdaf4e015ab339be0e542bf683a00" },
++  { 2112ULL, 0ULL, 500ULL,
++    "871bc633e7fa6b1698e8d9864472b12850baa5c7dc9c56e02e9f476d1d875c74",
++    "4276a417e58b300668c2f41b8c2307c99a350580b7d3b17b851993b9f65a97d5",
++    "8613d92f974fd64cd2afde03abb1be787ff5e0812246f246b024c8a3dd2db87e",
++    "1010bfe2aad3068613d92f974fd64cd2afde03abb1be787ff5e0812246f246b024c8a3dd2db87ede66dcd502ca1001ffc0100181a582b6d42203871c5fc56d49f355ba8347d6b18eebeff37c09b8857ef3c863e223c46c4b2a128c2101303aab41acb6b50a49a49bfd1f38b680c69a4de5d284e9fd16470006c32f07690000",
++    "1010bfe2aad3068613d92f974fd64cd2afde03abb1be787ff5e0812246f246b024c8a3dd2db87ede66dcd5337b8d76072b3d8e6a018677f646144f21b2675e7e7ee5c0d32f399f5c6b0aa101",
++    "7b02efe852edad14c282877c0c64d30f401a7b4f5f382358871b65efd5652300" },
++  { 2113ULL, 2048ULL, 500ULL,
++    "f66b60ce6a36fadf91424164c663643432c049f2af10a8141fe32f07a41d305f",
++    "c32e39e215733d4ef3b54989ec72a45bc3b7ee15713f63dcd8ed7faa44482375",
++    "4276a417e58b300668c2f41b8c2307c99a350580b7d3b17b851993b9f65a97d5",
++    "1010c4e2aad3064276a417e58b300668c2f41b8c2307c99a350580b7d3b17b851993b9f65a97d5cb1c084f02cb1001ffc11001cbd0dfb5d42203ce300bf8da5643f4bea654d1f1b876a3e48486eab91f754d96149629b79deaafbe210165a679d8786b93365c7b149807a10fccf80311a2784ec29e2e3d2446af4479cb0000",
++    "1010c4e2aad3064276a417e58b300668c2f41b8c2307c99a350580b7d3b17b851993b9f65a97d5cb1c084fd717816aa6ff5d5c8258597957e515ecaf0d46eab5681d97b53ca4f8b336aa0e01",
++    "0f25c4a8f186c14795b2978948b1fa6b44c6f58ecce4c1a991b4eb5638f31600" },
++};
++
++crypto::hash pod_hash(const char *h)
++{
++  crypto::hash out;
++  if (!epee::string_tools::hex_to_pod(std::string(h), out)) memset(out.data, 0xee, sizeof(out.data));
++  return out;
++}
++
++void test_block_consensus_vectors()
++{
++  printf("\n-- block consensus vectors (v16, daemon-generated): seed rule, main and alternative chain --\n");
++  const size_t n = sizeof(g_v16_vectors) / sizeof(g_v16_vectors[0]);
++  auto id_at = [&](uint64_t height) -> const char * {
++    for (size_t j = 0; j < n; ++j) if (g_v16_vectors[j].height == height) return g_v16_vectors[j].block_hash;
++    return nullptr;
++  };
++  bool seed_rule = true, seed_id_ok = true, main_ok = true, alt_ok = true, blob_ok = true, id_ok = true, target_ok = true;
++  for (size_t i = 0; i < n; ++i)
++  {
++    const block_vector &v = g_v16_vectors[i];
++    if (crypto::rx_seedheight(v.height) != v.seed_height) seed_rule = false;
++
++    // THE MAIN-CHAIN DERIVATION: the block id AT rx_seedheight(h), read by height, is the seed.
++    const char *main_seed_id = id_at(crypto::rx_seedheight(v.height));
++    if (!main_seed_id || std::string(main_seed_id) != v.epoch_key) { seed_id_ok = false; continue; }
++    const crypto::hash seed = pod_hash(main_seed_id);
++    const crypto::hash want = pod_hash(v.daemon_pow_hash);
++    std::string hb, fb;
++    epee::string_tools::parse_hexstr_to_binbuff(std::string(v.hashing_blob), hb);
++    epee::string_tools::parse_hexstr_to_binbuff(std::string(v.full_block_blob), fb);
++
++    // ...hashed exactly as get_block_longhash(pbc, ...) hashes it on the main chain.
++    crypto::hash main_pow;
++    meep_slow_hash(seed.data, v.height, hb.data(), hb.size(), main_pow.data);
++    if (!(main_pow == want)) main_ok = false;
++
++    block b;
++    if (!parse_and_validate_block_from_blob(fb, b)) { blob_ok = false; alt_ok = false; id_ok = false; continue; }
++    if (get_block_hashing_blob(b) != hb) blob_ok = false;
++    crypto::hash alt_pow;
++    get_altblock_longhash(b, alt_pow, seed, v.height);
++    if (!(alt_pow == want)) alt_ok = false;
++    if (!(get_block_hash(b) == pod_hash(v.block_hash))) id_ok = false;
++    if (!check_hash(want, v.difficulty)) target_ok = false;
++  }
++  chk(seed_rule, "rx_seedheight reproduces every vector's committed seed height");
++  chk(seed_id_ok, "the block id at rx_seedheight(h) is every vector's committed seed (epoch key)");
++  chk(main_ok, "the main-chain derivation (that seed into meep_slow_hash) reproduces every daemon PoW byte-for-byte");
++  chk(alt_ok, "get_altblock_longhash (alternative-chain path) reproduces every daemon PoW byte-for-byte");
++  chk(blob_ok, "every full block parses and yields exactly its committed hashing blob");
++  chk(id_ok, "every block id is exactly the committed one");
++  chk(target_ok, "every committed PoW meets its committed difficulty");
++
++  // THE SEED BLOCK ID AT THE FROZEN SEED HEIGHT. Height 2113's seed is block 2048's id: the main chain
++  // reads it by height, and the alternative chain walks to the block at seed height + 1 and takes its
++  // prev_id. Height 1's parent is the id at its seed height 0.
++  const block_vector *v0 = nullptr, *v1 = nullptr, *v2048 = nullptr, *v2113 = nullptr;
++  for (size_t i = 0; i < n; ++i)
++  {
++    if (g_v16_vectors[i].height == 0) v0 = &g_v16_vectors[i];
++    if (g_v16_vectors[i].height == 1) v1 = &g_v16_vectors[i];
++    if (g_v16_vectors[i].height == 2048) v2048 = &g_v16_vectors[i];
++    if (g_v16_vectors[i].height == 2113) v2113 = &g_v16_vectors[i];
++  }
++  chk(v2048 && v2113 && std::string(v2113->epoch_key) == v2048->block_hash,
++      "height 2113's MeepHash seed is exactly the id of block 2048 (its frozen seed height)");
++  chk(v0 && v1 && std::string(v1->prev_hash) == v0->block_hash && std::string(v1->epoch_key) == v0->block_hash,
++      "height 1's seed is the id of block 0, which is also what the next block's prev_id names");
++
++  // The target boundary for difficulty 500: the largest passing hash passes, one more fails.
++  {
++    using boost::multiprecision::cpp_int;
++    const cpp_int max256 = (cpp_int(1) << 256) - 1;
++    const cpp_int limit = max256 / 500;
++    auto to_hash = [](cpp_int x) {
++      crypto::hash h;
++      for (size_t i = 0; i < 32; ++i) { h.data[i] = (char)static_cast<unsigned>(cpp_int(x % 256)); x /= 256; }
++      return h;
++    };
++    chk(check_hash(to_hash(limit), 500), "difficulty 500: the largest passing hash passes");
++    chk(!check_hash(to_hash(limit + 1), 500), "difficulty 500: one above it fails");
++  }
++
++  // A different nonce is a different proof-of-work: the vector's PoW does not transfer.
++  if (v2113)
++  {
++    std::string hb;
++    epee::string_tools::parse_hexstr_to_binbuff(std::string(v2113->hashing_blob), hb);
++    hb[39] = (char)(hb[39] ^ 0x01);
++    const crypto::hash seed = pod_hash(v2113->epoch_key);
++    crypto::hash moved;
++    meep_slow_hash(seed.data, v2113->height, hb.data(), hb.size(), moved.data);
++    chk(!(moved == pod_hash(v2113->daemon_pow_hash)), "height 2113 with one nonce bit flipped does not reproduce the vector's PoW");
++  }
++}
++
+ // ---------------------------------------------------------------------------------------------
+ // 3. The shared update helper fails closed and hands out no URL.
+ // ---------------------------------------------------------------------------------------------
+@@ -231,8 +566,12 @@ void test_update_helper_fails_closed()
+ 
+ } // namespace
+ 
+-int main()
++int main(int argc, char **argv)
+ {
++  // The child mode of section 4: print the seed schedule this process derives, and nothing else.
++  if (argc == 2 && std::string(argv[1]) == "--seed-schedule-child")
++    return seed_schedule_child();
++  const char *argv0 = argc > 0 ? argv[0] : "";
+   printf("=================================================================\n");
+   printf("MeepCoin inherited-runtime-contact tests\n");
+   printf("NOTE: this binary makes no DNS, TCP or HTTP request.\n");
+@@ -242,6 +581,10 @@ int main()
+   test_genesis_values_unchanged();
+   test_update_helper_fails_closed();
+ 
++  test_seed_schedule_is_fixed();
++  test_seed_schedule_ignores_environment(argv0);
++  test_block_consensus_vectors();
++
+   meep_slow_hash_free_state();
+ 
+   printf("\n=================================================================\n");

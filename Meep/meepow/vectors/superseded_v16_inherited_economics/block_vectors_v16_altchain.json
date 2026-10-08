@@ -1,0 +1,32 @@
+{
+  "case": "alternate-chain siblings",
+  "description": "Two distinct nonces satisfying the same block template. Both are valid blocks with the same parent at the same height. The first submitted becomes the tip; the second is validated via get_altblock_longhash.",
+  "height": 2227,
+  "difficulty": 60,
+  "target_le_hex": "4444444444444444444444444444444444444444444444444444444444444404",
+  "seed_height": 2048,
+  "epoch_key": "915be2c7272b1cb9cd9bd9183e84fd7e0a469f404eb472ff2a16950440956a18",
+  "delayed_seed_input": "915be2c7272b1cb9cd9bd9183e84fd7e0a469f404eb472ff2a16950440956a18",
+  "block_hashing_blob": "1010a0fea8d3061925fa86c5c751e59b4f65e1a24e218302830d2ef95e9692ee33db9c39a05ce4000000003ff59f0a429ac5d238b5cffdd3127c13d7a738a38f11cd11a0f703cce84f3d4e01",
+  "blob_nonce_zeroed": "1010a0fea8d3061925fa86c5c751e59b4f65e1a24e218302830d2ef95e9692ee33db9c39a05ce4000000003ff59f0a429ac5d238b5cffdd3127c13d7a738a38f11cd11a0f703cce84f3d4e01",
+  "nonce_offset_bytes_hashing_blob": 39,
+  "nonce_offset_bytes_full_blob": 39,
+  "nonce_byte_order": "little-endian uint32",
+  "siblings": [
+    {
+      "nonce": 125,
+      "pow": "043d9b707e5f45a6fed173b872e133015b1a25f5dd4f26e038efd74b9bf7d702",
+      "submit_status": "OK",
+      "submit_error": null,
+      "full_block_blob": "1010a0fea8d3061925fa86c5c751e59b4f65e1a24e218302830d2ef95e9692ee33db9c39a05ce47d00000002bd1101ffb31101acecf2faf4fe0303827d43793847bb7b2f7af3a72f3124c0a8257e443b3c0f2148d9beddc0b6bc0f462b01e59cda6d35f631b94e71ade36db4ead76a8fe2e35e126947555dfc33cab865e5020800000000000000000000"
+    },
+    {
+      "nonce": 259,
+      "pow": "083814d2b32bdc95001bd01a4d4c88268a3ce47156a2563bc3e9da297c298b01",
+      "submit_status": "OK",
+      "submit_error": null,
+      "full_block_blob": "1010a0fea8d3061925fa86c5c751e59b4f65e1a24e218302830d2ef95e9692ee33db9c39a05ce40301000002bd1101ffb31101acecf2faf4fe0303827d43793847bb7b2f7af3a72f3124c0a8257e443b3c0f2148d9beddc0b6bc0f462b01e59cda6d35f631b94e71ade36db4ead76a8fe2e35e126947555dfc33cab865e5020800000000000000000000"
+    }
+  ],
+  "expected_result": "PASS (both satisfy the target; both are valid at this height)"
+}

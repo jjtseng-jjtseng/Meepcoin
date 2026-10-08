@@ -1,0 +1,30 @@
+add_executable(meepcoin-genesis meepcoin_genesis.cpp)
+target_link_libraries(meepcoin-genesis PRIVATE cryptonote_core cncrypto common epee
+  ${Boost_PROGRAM_OPTIONS_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_FILESYSTEM_LIBRARY}
+  ${Boost_THREAD_LIBRARY} ${EXTRA_LIBRARIES})
+set_property(TARGET meepcoin-genesis PROPERTY RUNTIME_OUTPUT_DIRECTORY
+  "${CMAKE_BINARY_DIR}/bin")
+
+add_executable(meepcoin-blockhashing meepcoin_blockhashing.cpp)
+target_link_libraries(meepcoin-blockhashing PRIVATE cryptonote_core cncrypto common epee
+  ${Boost_PROGRAM_OPTIONS_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_FILESYSTEM_LIBRARY}
+  ${Boost_THREAD_LIBRARY} ${EXTRA_LIBRARIES})
+set_property(TARGET meepcoin-blockhashing PROPERTY RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+
+add_executable(meepcoin-genesis16 meepcoin_genesis_v16.cpp)
+target_link_libraries(meepcoin-genesis16 PRIVATE cryptonote_core cncrypto common epee ringct
+  ${Boost_PROGRAM_OPTIONS_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_FILESYSTEM_LIBRARY}
+  ${Boost_THREAD_LIBRARY} ${EXTRA_LIBRARIES})
+set_property(TARGET meepcoin-genesis16 PROPERTY RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+
+add_executable(meepcoin-econ-dump meepcoin_econ_dump.cpp)
+target_link_libraries(meepcoin-econ-dump PRIVATE cryptonote_basic cncrypto common epee
+  ${Boost_SYSTEM_LIBRARY} ${Boost_FILESYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} ${EXTRA_LIBRARIES})
+set_property(TARGET meepcoin-econ-dump PROPERTY RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+
+add_executable(meepcoin-hardfork-test meepcoin_hardfork_test.cpp)
+target_link_libraries(meepcoin-hardfork-test PRIVATE cryptonote_core cryptonote_basic blockchain_db
+  cncrypto common epee ringct
+  ${Boost_PROGRAM_OPTIONS_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_FILESYSTEM_LIBRARY}
+  ${Boost_THREAD_LIBRARY} ${EXTRA_LIBRARIES})
+set_property(TARGET meepcoin-hardfork-test PROPERTY RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")

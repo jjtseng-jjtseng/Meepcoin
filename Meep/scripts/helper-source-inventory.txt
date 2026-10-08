@@ -1,0 +1,68 @@
+# CONSERVATIVE COVERED SOURCE SET for meepow-v2-helper's build identity.
+#
+# WHAT THIS IS. An explicit, repository-relative list of source files that is a SUPERSET of the
+# helper's project-local compile inputs. It is deliberately not called "the exact compile inputs":
+# it currently also covers meepow/src/tmto_strict.hpp and meepow/src/tmto_strict2.hpp, which the
+# helper's current dependency closure does not reach. Covering more than the compiler reads is
+# safe (an unrelated edit forces a rebuild); covering LESS is the defect this file exists to
+# prevent. pool/dev/tests/source_identity.test.mjs walks the real include closure from the real
+# helper target and fails if any project-local input is missing from this list.
+#
+# HOW IT IS COMPUTED. scripts/build-native-helper.sh hashes each file, sorts the "<sha256>  <path>"
+# lines by path, hashes that listing, and compiles the result into the binary as
+# MEEPOW_HELPER_SOURCE_ID. The helper reports it in HELLO; pool/dev/source_identity.mjs recomputes
+# the same value from the working tree, byte for byte, and the pool refuses a helper that disagrees.
+#
+# WHAT IT PROVES. That the running helper was built from THESE bytes. It catches the ordinary and
+# dangerous case: you edited the algorithm or the helper and forgot to rebuild, so the "native"
+# side of the cross-check is a stale binary.
+#
+# WHAT IT DOES NOT PROVE -- READ THIS BEFORE CITING IT.
+#   * Nothing about the compiler, its version, its flags, the standard library, the linker or the
+#     CPU. A different toolchain over identical sources produces the SAME source id.
+#   * Nothing about the ELF's own bytes. This is not a binary attestation and must never be
+#     described as one.
+#   * BUILD-RECIPE INPUTS ARE DELIBERATELY OUTSIDE THE ID. meepow/CMakeLists.txt and
+#     scripts/build-native-helper.sh are compile inputs in the practical sense -- they choose
+#     targets, defines and optimisation -- and they are NOT covered here. Covering them would make
+#     the id change when the recipe changes without the sources changing, which is a different
+#     claim than the one this id makes ("the binary was built from these algorithm sources").
+#     The consequence is explicit: a recipe change alone does not invalidate a helper's id.
+#
+# FORMAT. Blank lines and lines beginning with '#' are ignored. Every other line is a path relative
+# to the repository root, using forward slashes, and MUST exist as a regular file; a missing entry
+# is a build/startup failure, never a skip. Duplicates, absolute paths, '..' traversal, backslashes,
+# leading './', and paths that differ only by case are all refused, so the Bash and Node readers
+# cannot disagree about what the canonical listing is.
+
+# the helper itself
+meepow/tools/v2_verify_helper.cpp
+
+# the public v2 API it calls, and the frozen implementation behind it
+meepow/include/meepow/meepow.h
+meepow/include/meepow/v2.hpp
+meepow/include/meepow/v2_c.h
+meepow/src/v2_api.cpp
+meepow/src/v2_capi.cpp
+meepow/src/blake3_xof.hpp
+meepow/src/dataset.hpp
+meepow/src/dataset_backend.hpp
+meepow/src/dataset_v2.hpp
+meepow/src/endian.hpp
+meepow/src/epoch.hpp
+meepow/src/meepow_v1.hpp
+meepow/src/meepow_v2.hpp
+meepow/src/params.hpp
+meepow/src/params_v1.hpp
+meepow/src/program.hpp
+meepow/src/target.hpp
+meepow/src/tmto_strict.hpp
+meepow/src/tmto_strict2.hpp
+meepow/src/vm.hpp
+
+# the hash primitive both builds share
+meepow/third_party/blake3/blake3.c
+meepow/third_party/blake3/blake3.h
+meepow/third_party/blake3/blake3_dispatch.c
+meepow/third_party/blake3/blake3_impl.h
+meepow/third_party/blake3/blake3_portable.c

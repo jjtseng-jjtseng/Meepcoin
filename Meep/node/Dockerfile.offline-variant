@@ -1,0 +1,20 @@
+# Offline refresh of a locally retained, previously pinned MeepCoin builder.
+# The parent is addressed by immutable local image ID, not a mutable tag.
+# This path is for a host whose Docker legacy builder cannot
+# refetch the checksum-pinned Ubuntu ADD inputs while DNS is unavailable.
+# It never fetches packages or Monero source. It replaces the entire locked
+# daemon-source directory, MeepHash inputs, and build entrypoint from the
+# current allowlisted context, then verifies their contracts in the image.
+# It is not a daemon launch and does not authorize a mining experiment.
+ARG BASE_IMAGE=sha256:7eff53d041d9e1cfac1c22badcd92694d2756cb2bb088d66d35ddee1a50f19b2
+FROM ${BASE_IMAGE}
+
+COPY node/daemon-source /src/daemon-source
+COPY meepow /src/meephash/meepow
+COPY node/docker-build.sh /usr/local/bin/meepcoin-build
+
+RUN chmod +x /usr/local/bin/meepcoin-build /src/daemon-source/reconstruct.sh \
+ && python3 /src/daemon-source/verify_lock.py meepow /src/daemon-source /src/meephash \
+ && python3 /src/daemon-source/verify_lock.py contract /src/daemon-source
+
+ENTRYPOINT ["/usr/local/bin/meepcoin-build"]

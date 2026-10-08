@@ -1,0 +1,41 @@
+# build output
+build/
+dist/
+*.o
+*.a
+*.wasm.map
+
+# fuzzing artifacts (corpora ARE committed; crashes/findings are not)
+meepow/fuzz/artifacts/
+crash-*
+leak-*
+timeout-*
+
+# node
+node_modules/
+
+# editors / OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
+
+# local env / secrets — never commit credentials
+.env
+.env.*
+*service-account*.json
+
+# wasm build artifacts (rebuild with scripts/build-wasm.sh)
+meepow/wasm/obj/
+meepow/wasm/meepow.mjs
+meepow/wasm/meepow.wasm
+
+# fuzz logs are regenerated per campaign; the .meta summaries ARE committed
+meepow/fuzz/logs/*.log
+meepow/gpu/v2_cuda_hosttest
+
+# python bytecode
+__pycache__/
+*.pyc
+results/*/logs_*/*.log

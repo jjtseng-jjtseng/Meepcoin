@@ -1,0 +1,162 @@
+/* Deliberately plain. No framework, no web fonts, no remote assets: the page is served by a
+   loopback development server under a restrictive Content-Security-Policy that permits no
+   external origins at all. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #f6f6f4;
+  --fg: #1b1b1a;
+  --muted: #5c5c58;
+  --panel: #ffffff;
+  --line: #d9d9d4;
+  --warn-bg: #fdf6e3;
+  --warn-line: #d9c88a;
+  --accent: #1f5c3d;
+  --danger: #8c2f22;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16171a;
+    --fg: #e9e9e6;
+    --muted: #a3a39c;
+    --panel: #1e2024;
+    --line: #34363c;
+    --warn-bg: #2a2418;
+    --warn-line: #6b5b2c;
+    --accent: #6ec295;
+    --danger: #e08475;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+main {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 3rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem;
+}
+
+h2 {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.tag {
+  display: inline-block;
+  vertical-align: middle;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.2em 0.55em;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.lede { color: var(--muted); margin: 0 0 1.5rem; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem 1.15rem;
+  margin: 0 0 1.15rem;
+}
+
+.panel.warn {
+  background: var(--warn-bg);
+  border-color: var(--warn-line);
+}
+
+dl.facts, dl.stats {
+  display: grid;
+  grid-template-columns: minmax(9rem, 14rem) 1fr;
+  gap: 0.45rem 1rem;
+  margin: 0;
+}
+
+dl.facts dt, dl.stats dt {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+dl.facts dd, dl.stats dd { margin: 0; }
+
+@media (max-width: 34rem) {
+  dl.facts, dl.stats { grid-template-columns: 1fr; gap: 0.15rem; }
+  dl.facts dd { margin-bottom: 0.6rem; }
+}
+
+.fineprint {
+  color: var(--muted);
+  font-size: 0.87rem;
+  margin: 0.9rem 0 0;
+}
+
+.controls { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+
+.pace-control { margin-bottom: 1rem; }
+.pace-control label { display: block; margin-bottom: 0.35rem; font-weight: 600; }
+.pace-control select { font: inherit; max-width: 100%; padding: 0.5rem; }
+.pace-control[hidden] { display: none; }
+
+button {
+  font: inherit;
+  font-weight: 600;
+  padding: 0.6rem 1.4rem;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+button.primary:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.danger:not(:disabled) {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+output { font-variant-numeric: tabular-nums; }
+
+output[data-state="mining"] { color: var(--accent); font-weight: 700; }
+output[data-state="error"] { color: var(--danger); font-weight: 700; }
+output[data-state="stopped_hidden"], output[data-state="stopped"] { font-weight: 600; }
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+}
+
+footer {
+  border-top: 1px solid var(--line);
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  color: var(--muted);
+  font-size: 0.87rem;
+}

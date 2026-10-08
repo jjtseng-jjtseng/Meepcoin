@@ -1,0 +1,20 @@
+# Line-ending policy: LF everywhere, including on Windows checkouts.
+# Builds and vector/checksum verification happen in Linux containers/WSL;
+# CRLF conversion would break third_party CHECKSUMS.sha256 and test vectors.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+
+# Reconstruction patches carry the EXACT bytes of the daemon source, including files that
+# legitimately use CRLF terminators. Line-ending normalization would silently rewrite those bytes
+# and the patch would reconstruct a different tree -- so these are never converted. `-text` rather
+# than `binary` so they stay diffable for review.
+node/daemon-source/patches/*.patch -text
+
+# binaries
+*.wasm binary
+*.png binary
+*.ico binary
+
+# Preserve the exact bytes covered by the source and vendor checksum manifests.
+meepow/** -text
+node/daemon-source/** -text

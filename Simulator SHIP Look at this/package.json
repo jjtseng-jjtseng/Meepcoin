@@ -1,13 +1,15 @@
 {
   "name": "meepcoin-local-lab",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Private, voluntary multi-device MeepHash-W mining lab with non-spendable demo credits.",
   "private": true,
   "type": "module",
   "main": "src/main.cjs",
   "author": "MeepCoin Local Lab contributors",
   "license": "MIT",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "electron .",
     "start:browser": "electron . --browser",
@@ -17,19 +19,55 @@
     "dist": "npm run icons && electron-builder --win nsis portable --x64",
     "smoke:desktop": "node tools/desktop-smoke.mjs"
   },
-  "dependencies": { "selfsigned": "5.5.0", "ws": "8.22.0" },
-  "devDependencies": { "electron": "44.7.0", "electron-builder": "26.15.3" },
+  "dependencies": {
+    "selfsigned": "5.5.0",
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3"
+  },
   "build": {
     "appId": "org.meepcoin.locallab",
     "productName": "MeepCoin Local Lab",
     "artifactName": "MeepCoin-Local-Lab-Setup-${version}-${arch}.${ext}",
-    "directories": { "output": "dist", "buildResources": "assets" },
-    "files": ["src/**/*", "ui/**/*", "vendor/**/*", "assets/**/*", "package.json", "LICENSE", "README.md", "THIRD_PARTY.md"],
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "src/**/*",
+      "ui/**/*",
+      "vendor/**/*",
+      "assets/**/*",
+      "package.json",
+      "LICENSE",
+      "NOTICE.txt",
+      "!**/*.md",
+      "!**/README*"
+    ],
     "asar": true,
-    "asarUnpack": ["vendor/meephash/*.wasm"],
-    "win": { "icon": "assets/icon.ico", "signExecutable": false, "requestedExecutionLevel": "asInvoker" },
-    "nsis": { "oneClick": false, "perMachine": false, "allowElevation": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "createStartMenuShortcut": true, "deleteAppDataOnUninstall": false, "include": "assets/installer.nsh" },
-    "portable": { "artifactName": "MeepCoin-Local-Lab-${version}-Portable.exe" },
+    "asarUnpack": [
+      "vendor/meephash/*.wasm"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "signExecutable": false,
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "include": "assets/installer.nsh"
+    },
+    "portable": {
+      "artifactName": "MeepCoin-Local-Lab-${version}-Portable.exe"
+    },
     "npmRebuild": false
   }
 }

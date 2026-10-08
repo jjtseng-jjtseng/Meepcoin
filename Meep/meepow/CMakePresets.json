@@ -1,0 +1,96 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "release",
+      "displayName": "Release (portable BLAKE3, gcc)",
+      "binaryDir": "${sourceDir}/build/release",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "MEEPOW_BLAKE3_PORTABLE": "ON"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug (portable BLAKE3, gcc)",
+      "binaryDir": "${sourceDir}/build/debug",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "MEEPOW_BLAKE3_PORTABLE": "ON"
+      }
+    },
+    {
+      "name": "release-clang",
+      "displayName": "Release (portable BLAKE3, clang)",
+      "binaryDir": "${sourceDir}/build/release-clang",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "MEEPOW_BLAKE3_PORTABLE": "ON"
+      }
+    },
+    {
+      "name": "asan-ubsan",
+      "displayName": "Debug + ASan/UBSan (clang)",
+      "binaryDir": "${sourceDir}/build/asan-ubsan",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "MEEPOW_BLAKE3_PORTABLE": "ON",
+        "MEEPOW_SANITIZE": "address,undefined"
+      }
+    },
+    {
+      "name": "optimized-native",
+      "displayName": "Release + optimized BLAKE3 SIMD (benchmarks)",
+      "binaryDir": "${sourceDir}/build/optimized",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "MEEPOW_BLAKE3_PORTABLE": "OFF",
+        "CMAKE_CXX_FLAGS": "-O3 -march=native",
+        "CMAKE_C_FLAGS": "-O3 -march=native"
+      }
+    },
+    {
+      "name": "fuzzer",
+      "displayName": "Fuzzer (clang libFuzzer + ASan/UBSan)",
+      "binaryDir": "${sourceDir}/build/fuzzer",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "MEEPOW_BLAKE3_PORTABLE": "ON",
+        "MEEPOW_FUZZ": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "release", "configurePreset": "release" },
+    { "name": "debug", "configurePreset": "debug" },
+    { "name": "release-clang", "configurePreset": "release-clang" },
+    { "name": "asan-ubsan", "configurePreset": "asan-ubsan" },
+    { "name": "optimized-native", "configurePreset": "optimized-native" },
+    { "name": "fuzzer", "configurePreset": "fuzzer" }
+  ],
+  "testPresets": [
+    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } },
+    { "name": "debug", "configurePreset": "debug", "output": { "outputOnFailure": true } },
+    { "name": "release-clang", "configurePreset": "release-clang", "output": { "outputOnFailure": true } },
+    { "name": "asan-ubsan", "configurePreset": "asan-ubsan", "output": { "outputOnFailure": true } }
+  ]
+}

@@ -1,0 +1,1475 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: tseng <tseng.jayj@gmail.com>
+Date: Fri, 11 Sep 2026 15:26:49 -0400
+Subject: [PATCH] daemon: make genesis and runtime network defaults
+ self-contained
+
+An ordinary build of this daemon could construct a different genesis than an
+identical binary next to it, and on an ordinary start it reached for another
+project's infrastructure. Both are fixed here. No consensus value changes.
+
+GENESIS IS NO LONGER ENVIRONMENT-DEPENDENT
+
+generate_genesis_block() read MEEPCOIN_EXPERIMENTAL_GENESIS_TS and used it as
+the genesis timestamp. That function is shared production code: the daemon
+calls it from Blockchain::init() when initializing an empty database, and
+wallet2 calls it when deriving the network genesis. Two copies of the SAME
+binary therefore produced DIFFERENT genesis blocks -- different timestamp,
+hashing blob and block id -- purely because one inherited an environment
+variable. The override is removed with no replacement; a runtime flag would
+have the identical defect. src/meepcoin_genesis/HARNESS_COMPAT.md records that
+the old Python measurement launchers depend on the removed hook and are NO-GO
+until separately redesigned. Those scripts were deliberately not edited.
+
+NO INHERITED DEFAULT PEER
+
+Removed Monero's four clearnet DNS seed hostnames, sixteen fallback IP seeds on
+ports 18080/28080/38080, six onion seeds and three I2P seeds. Those are Monero
+nodes; MeepCoin cannot join Monero's chain, so contacting them only discloses
+this node to a foreign network's operators. No MeepCoin bootstrap authority has
+been reviewed and none is invented here. A node with no operator-supplied peer
+now has nothing to contact and says so. --seed-node, --add-peer,
+--add-priority-node and --add-exclusive-node are unaffected.
+
+NO UPDATE SUPPLY CHAIN
+
+--check-updates defaulted to "notify" and the timer fired on the first idle
+tick, so an ordinary start queried updates.moneropulse.* within seconds;
+"download"/"update" would fetch a getmonero.org binary. The default is now
+"disabled", any other value is refused at argument validation rather than
+silently ignored, the periodic check is not scheduled, core::check_updates() is
+a no-op, and the shared tools::check_updates()/get_update_url() fail closed with
+cleared outputs and no URL. The daemon update RPC answers locally. Because the
+helper is shared, the wallet API returns no update and no URL too. Endpoint
+literals are deleted so their absence is visible in a built binary.
+
+NO DNS BLOCKLIST AUTHORITY
+
+Removed the seven blocklist.moneropulse.* endpoints. --enable-dns-blocklist
+fails startup validation: accepting it and doing nothing would leave an operator
+believing a protection was active. Operator banning (--ban-list, ban RPC) is
+unaffected.
+
+NO UNSOLICITED RESOLVER PROBE
+
+The DNSResolver constructor probed updates.moneropulse.org the first time any
+resolver was built -- including for a user-requested OpenAlias lookup -- and on
+failure silently swapped the system resolver for hard-coded public ones. Both
+are gone. Explicit DNS_PUBLIC and generic DNS/OpenAlias still work; this is not
+a general DNS rewrite.
+
+Also corrected one now-unreachable checkpoint warning that still named
+MoneroPulse and --enforce-dns-checkpointing, neither of which this daemon has.
+
+TESTS
+
+  meepcoin-runtime-quarantine-test        45 passed, 0 failed
+  meepcoin_runtime_quarantine_guards.sh   81 passed, 0 failed
+  meepcoin-trust-anchor-test              66 passed, 0 failed (unchanged)
+  meepcoin_trust_anchor_guards.sh         24 passed, 0 failed (unchanged)
+
+Neither new test makes a DNS, TCP or HTTP request. Peer/blocklist/resolver
+removals are asserted against the source and the built binary rather than by
+instantiating node_server<> or constructing a resolver and hoping nothing
+leaves the machine.
+
+OUT OF SCOPE, DELIBERATELY UNCHANGED
+
+Genesis values, network UUIDs, ports, address prefixes, emission, difficulty,
+timestamp rules, hardforks, MeepHash sources and wallet key formats are
+byte-identical. Wallet donation branding, research citations, hardware-wallet
+names, cryptographic domain separators and the debug-only DNS utility are left
+alone; they are separate design decisions, not part of this change.
+
+---
+ src/common/dns_utils.cpp                      |  33 +--
+ src/common/updates.cpp                        | 103 ++-----
+ src/cryptonote_core/blockchain.cpp            |   7 +-
+ src/cryptonote_core/cryptonote_core.cpp       | 174 +++---------
+ src/cryptonote_core/cryptonote_tx_utils.cpp   |  38 +--
+ src/meepcoin_genesis/CMakeLists.txt           |   5 +
+ src/meepcoin_genesis/HARNESS_COMPAT.md        |  53 ++++
+ .../meepcoin_runtime_quarantine_guards.sh     | 256 ++++++++++++++++++
+ .../meepcoin_runtime_quarantine_test.cpp      | 251 +++++++++++++++++
+ src/p2p/net_node.h                            |  18 +-
+ src/p2p/net_node.inl                          | 145 ++++------
+ src/rpc/core_rpc_server.cpp                   | 108 +-------
+ 12 files changed, 735 insertions(+), 456 deletions(-)
+ create mode 100644 src/meepcoin_genesis/HARNESS_COMPAT.md
+ create mode 100644 src/meepcoin_genesis/meepcoin_runtime_quarantine_guards.sh
+ create mode 100644 src/meepcoin_genesis/meepcoin_runtime_quarantine_test.cpp
+
+diff --git a/src/common/dns_utils.cpp b/src/common/dns_utils.cpp
+index 40e913800092a16e6ecbb443da0b1bfac6af713e..e6b5ee9d4073945b43c61b1483daa9dbe2d3b3b0 100644
+--- a/src/common/dns_utils.cpp
++++ b/src/common/dns_utils.cpp
+@@ -289,26 +289,19 @@ DNSResolver::DNSResolver() : m_data(new DNSResolverData())
+ 
+   add_anchors(m_data->m_ub_context);
+ 
+-  if (!DNS_PUBLIC)
+-  {
+-    // if no DNS_PUBLIC specified, we try a lookup to what we know
+-    // should be a valid DNSSEC record, and switch to known good
+-    // DNSSEC resolvers if verification fails
+-    bool available, valid;
+-    static const char *probe_hostname = "updates.moneropulse.org";
+-    auto records = get_txt_record(probe_hostname, available, valid);
+-    if (!valid)
+-    {
+-      MINFO("Failed to verify DNSSEC record from " << probe_hostname << ", falling back to TCP with well known DNSSEC resolvers");
+-      ub_ctx_delete(m_data->m_ub_context);
+-      m_data->m_ub_context = ub_ctx_create();
+-      add_anchors(m_data->m_ub_context);
+-      for (const auto &ip: DEFAULT_DNS_PUBLIC_ADDR)
+-        ub_ctx_set_fwd(m_data->m_ub_context, string_copy(ip));
+-      ub_ctx_set_option(m_data->m_ub_context, string_copy("do-udp:"), string_copy("no"));
+-      ub_ctx_set_option(m_data->m_ub_context, string_copy("do-tcp:"), string_copy("yes"));
+-    }
+-  }
++  // MeepCoin: NO UNSOLICITED PROBE WHEN A RESOLVER IS CONSTRUCTED.
++  //
++  // Monero probed updates.moneropulse.org here the first time ANY resolver was built -- including
++  // for an unrelated OpenAlias lookup the user asked for -- purely to decide whether the local
++  // resolver validated DNSSEC. Two things were wrong with inheriting it. It contacted another
++  // project's infrastructure without being asked, which is a disclosure the user never requested;
++  // and when that probe failed it SILENTLY swapped the system resolver for a hard-coded list of
++  // public resolvers, changing where every later query went without saying so.
++  //
++  // Both are removed. The resolver now uses the system configuration, exactly as configured.
++  // DNS_PUBLIC is untouched: an operator who explicitly sets it still gets the public-resolver
++  // behaviour, and that path is above, unchanged. Generic DNS and OpenAlias still work; what is
++  // gone is the automatic lookup nobody requested and the hidden fallback it triggered.
+ }
+ 
+ DNSResolver::~DNSResolver()
+diff --git a/src/common/updates.cpp b/src/common/updates.cpp
+index 2a129075bb0de41272f45dbbfba37d10c5a68311..b14a907b84f6c85a5df300736e5ea3bd8d1d5bf9 100644
+--- a/src/common/updates.cpp
++++ b/src/common/updates.cpp
+@@ -35,88 +35,41 @@
+ #undef MONERO_DEFAULT_LOG_CATEGORY
+ #define MONERO_DEFAULT_LOG_CATEGORY "updates"
+ 
++// MeepCoin: THE UPDATE SUPPLY CHAIN IS REMOVED, NOT REDIRECTED.
++//
++// Monero's implementation asked the updates.moneropulse.* TXT records for "<software>:<buildtag>:
++// <version>:<sha256>" and built a download URL under downloads.getmonero.org / updates.getmonero.org.
++// Inherited by a fork, that is a standing authority for another project to name the next binary this
++// software offers to install.
++//
++// Both functions now fail closed. check_updates() performs no DNS lookup, clears its outputs and
++// reports "no update"; get_update_url() returns an empty string so no caller can accidentally hand a
++// URL to a downloader or print one to an operator. The endpoint literals are deleted from this
++// translation unit -- deliberately, so that `strings` on a built binary shows their absence.
++//
++// No replacement domain, key, URL or binary is invented here. A MeepCoin update channel needs a
++// signing authority and a release process that do not exist yet, and inventing placeholders would
++// create exactly the false confidence this change removes.
++
+ namespace tools
+ {
+   bool check_updates(const std::string &software, const std::string &buildtag, std::string &version, std::string &hash)
+   {
+-    std::vector<std::string> records;
+-    bool found = false;
+-
+-    MDEBUG("Checking updates for " << buildtag << " " << software);
+-
+-    // All four MoneroPulse domains have DNSSEC on and valid
+-    static const std::vector<std::string> dns_urls = {
+-        "updates.moneropulse.org",
+-        "updates.moneropulse.net",
+-        "updates.moneropulse.fr",
+-        "updates.moneropulse.de",
+-        "updates.moneropulse.co",
+-        "updates.moneropulse.ch",
+-        "updates.moneropulse.se"
+-    };
+-
+-    if (!tools::dns_utils::load_txt_records_from_dns(records, dns_urls))
+-      return false;
+-
+-    for (const auto& record : records)
+-    {
+-      std::vector<std::string> fields;
+-      boost::split(fields, record, boost::is_any_of(":"));
+-      if (fields.size() != 4)
+-      {
+-        MWARNING("Updates record does not have 4 fields: " << record);
+-        continue;
+-      }
+-
+-      if (software != fields[0] || buildtag != fields[1])
+-        continue;
+-
+-      bool alnum = true;
+-      for (auto c: fields[3])
+-        if (!isalnum(c))
+-          alnum = false;
+-      if (fields[3].size() != 64 && !alnum)
+-      {
+-        MWARNING("Invalid hash: " << fields[3]);
+-        continue;
+-      }
+-
+-      // use highest version
+-      if (found)
+-      {
+-        int cmp = vercmp(version.c_str(), fields[2].c_str());
+-        if (cmp > 0)
+-          continue;
+-        if (cmp == 0 && hash != fields[3])
+-          MWARNING("Two matches found for " << software << " version " << version << " on " << buildtag);
+-      }
+-
+-      version = fields[2];
+-      hash = fields[3];
+-
+-      MINFO("Found new version " << version << " with hash " << hash);
+-      found = true;
+-    }
+-    return found;
++    (void)software;
++    (void)buildtag;
++    version.clear();
++    hash.clear();
++    MDEBUG("MeepCoin: update checking is not supported; no DNS lookup was performed");
++    return false;
+   }
+ 
+   std::string get_update_url(const std::string &software, const std::string &subdir, const std::string &buildtag, const std::string &version, bool user)
+   {
+-    const char *base = user ? "https://downloads.getmonero.org/" : "https://updates.getmonero.org/";
+-#ifdef _WIN32
+-    static const char *extension = strncmp(buildtag.c_str(), "source", 6) ? (strncmp(buildtag.c_str(), "install-", 8) ? ".zip" : ".exe") : ".tar.bz2";
+-#elif defined(__APPLE__)
+-    static const char *extension = strncmp(software.c_str(), "monero-gui", 10) ? ".tar.bz2" : ".dmg";
+-#else
+-    static const char extension[] = ".tar.bz2";
+-#endif
+-
+-    std::string url;
+-
+-    url =  base;
+-    if (!subdir.empty())
+-      url += subdir + "/";
+-    url = url + software + "-" + buildtag + "-v" + version + extension;
+-    return url;
++    (void)software;
++    (void)subdir;
++    (void)buildtag;
++    (void)version;
++    (void)user;
++    return std::string();
+   }
+ }
+diff --git a/src/cryptonote_core/blockchain.cpp b/src/cryptonote_core/blockchain.cpp
+index 337a4b4bc23dc679eca799b77878b701f901b2e4..30e4e2def23cb13ac6066cdeec410a019875bc92 100644
+--- a/src/cryptonote_core/blockchain.cpp
++++ b/src/cryptonote_core/blockchain.cpp
+@@ -4804,7 +4804,12 @@ void Blockchain::check_against_checkpoints(const checkpoints& points, bool enfor
+       }
+       else
+       {
+-        LOG_ERROR("WARNING: local blockchain failed to pass a MoneroPulse checkpoint, and you could be on a fork. You should either sync up from scratch, OR download a fresh blockchain bootstrap, OR enable checkpoint enforcing with the --enforce-dns-checkpointing command-line option");
++        // MeepCoin: this branch is currently unreachable -- check_against_checkpoints() has exactly
++        // one call site and it passes enforce=true. The inherited text named "a MoneroPulse
++        // checkpoint" and told the operator to pass --enforce-dns-checkpointing; both are gone, so
++        // it described behaviour this daemon does not have. A checkpoint reaching this code can
++        // only have come from a local operator-supplied checkpoints.json.
++        LOG_ERROR("WARNING: local blockchain failed to pass a checkpoint from the operator-supplied checkpoints.json, and you could be on a fork. You should either sync up from scratch or review that file.");
+       }
+     }
+   }
+diff --git a/src/cryptonote_core/cryptonote_core.cpp b/src/cryptonote_core/cryptonote_core.cpp
+index f95411766b37bcb26eff58cb14f5aff5c9a21f22..854a91f979d9f30fc7981b7128896596cd55bcdc 100644
+--- a/src/cryptonote_core/cryptonote_core.cpp
++++ b/src/cryptonote_core/cryptonote_core.cpp
+@@ -171,8 +171,8 @@ namespace cryptonote
+   };
+   static const command_line::arg_descriptor<std::string> arg_check_updates = {
+     "check-updates"
+-  , "Check for new versions of monero: [disabled|notify|download|update]"
+-  , "notify"
++  , "Check for new versions: MeepCoin supports [disabled] only"
++  , "disabled"
+   };
+   static const command_line::arg_descriptor<bool> arg_fluffy_blocks  = {
+     "fluffy-blocks"
+@@ -711,19 +711,26 @@ namespace cryptonote
+     const bool skip_dns_checkpoints = true;
+     CHECK_AND_ASSERT_MES(update_checkpoints(skip_dns_checkpoints), false, "One or more checkpoints loaded from json or dns conflicted with existing checkpoints.");
+ 
+-   // DNS versions checking
+-    if (check_updates_string == "disabled" || not allow_dns)
+-      check_updates_level = UPDATES_DISABLED;
+-    else if (check_updates_string == "notify")
+-      check_updates_level = UPDATES_NOTIFY;
+-    else if (check_updates_string == "download")
+-      check_updates_level = UPDATES_DOWNLOAD;
+-    else if (check_updates_string == "update")
+-      check_updates_level = UPDATES_UPDATE;
+-    else {
+-      MERROR("Invalid argument to --check-updates: " << check_updates_string);
++    // MeepCoin: NO UPDATE SUPPLY CHAIN. ONLY "disabled" IS ACCEPTED.
++    //
++    // The inherited modes queried updates.moneropulse.* TXT records for a version and hash, then
++    // offered -- or fetched -- a binary from downloads.getmonero.org / updates.getmonero.org. That
++    // is a software-supply-chain authority belonging to another project: "notify" discloses this
++    // node to it, and "download"/"update" would place a foreign MONERO binary next to this daemon.
++    //
++    // MeepCoin has no signed update authority and no release process, so there is nothing
++    // legitimate for these modes to do. They are refused at argument validation rather than
++    // accepted and quietly ignored, so an operator cannot believe update checking is working.
++    (void)allow_dns;
++    if (check_updates_string != "disabled")
++    {
++      MERROR("--" << arg_check_updates.name << " is not supported by MeepCoin: the inherited update "
++             "channel belongs to another project (MoneroPulse TXT records and getmonero.org "
++             "downloads), and no signed MeepCoin update authority or release process exists. "
++             "Only \"disabled\" is accepted; it is also the default. Got: " << check_updates_string);
+       return false;
+     }
++    check_updates_level = UPDATES_DISABLED;
+ 
+     r = m_miner.init(vm, m_nettype);
+     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize miner instance");
+@@ -1617,7 +1624,10 @@ namespace cryptonote
+     }
+ 
+     relay_txpool_transactions(); // txpool handles periodic DB checking
+-    m_check_updates_interval.do_call(boost::bind(&core::check_updates, this));
++    // MeepCoin: the periodic update check is not scheduled. It fired immediately on the first idle
++    // tick (once_a_time_seconds<..., true>), so an ordinary daemon start performed a MoneroPulse
++    // TXT lookup within seconds. core::check_updates() is itself a no-op now; not scheduling it is
++    // the second, independent reason nothing can happen.
+     m_check_disk_space_interval.do_call(boost::bind(&core::check_disk_space, this));
+     m_block_rate_interval.do_call(boost::bind(&core::check_block_rate, this));
+     m_blockchain_pruning_interval.do_call(boost::bind(&core::update_blockchain_pruning, this));
+@@ -1649,131 +1659,17 @@ namespace cryptonote
+   //-----------------------------------------------------------------------------------------------
+   bool core::check_updates()
+   {
+-    static const char software[] = "monero";
+-#ifdef BUILD_TAG
+-    static const char buildtag[] = BOOST_PP_STRINGIZE(BUILD_TAG);
+-    static const char subdir[] = "cli"; // because it can never be simple
+-#else
+-    static const char buildtag[] = "source";
+-    static const char subdir[] = "source"; // because it can never be simple
+-#endif
+-
+-    if (m_offline)
+-      return true;
+-
+-    if (check_updates_level == UPDATES_DISABLED)
+-      return true;
+-
+-    std::string version, hash;
+-    MCDEBUG("updates", "Checking for a new " << software << " version for " << buildtag);
+-    if (!tools::check_updates(software, buildtag, version, hash))
+-      return false;
+-
+-    if (tools::vercmp(version.c_str(), MONERO_VERSION) <= 0)
+-    {
+-      m_update_available = false;
+-      return true;
+-    }
+-
+-    std::string url = tools::get_update_url(software, subdir, buildtag, version, true);
+-    MCLOG_CYAN(el::Level::Info, "global", "Version " << version << " of " << software << " for " << buildtag << " is available: " << url << ", SHA256 hash " << hash);
+-    m_update_available = true;
+-
+-    if (check_updates_level == UPDATES_NOTIFY)
+-      return true;
+-
+-    url = tools::get_update_url(software, subdir, buildtag, version, false);
+-    std::string filename;
+-    const char *slash = strrchr(url.c_str(), '/');
+-    if (slash)
+-      filename = slash + 1;
+-    else
+-      filename = std::string(software) + "-update-" + version;
+-    boost::filesystem::path path(epee::string_tools::get_current_module_folder());
+-    path /= filename;
+-
+-    boost::unique_lock<boost::mutex> lock(m_update_mutex);
+-
+-    if (m_update_download != 0)
+-    {
+-      MCDEBUG("updates", "Already downloading update");
+-      return true;
+-    }
+-
+-    crypto::hash file_hash;
+-    if (!tools::sha256sum(path.string(), file_hash) || (hash != epee::string_tools::pod_to_hex(file_hash)))
+-    {
+-      MCDEBUG("updates", "We don't have that file already, downloading");
+-      const std::string tmppath = path.string() + ".tmp";
+-      if (epee::file_io_utils::is_file_exist(tmppath))
+-      {
+-        MCDEBUG("updates", "We have part of the file already, resuming download");
+-      }
+-      m_last_update_length = 0;
+-      m_update_download = tools::download_async(tmppath, url, [this, hash, path](const std::string &tmppath, const std::string &uri, bool success) {
+-        bool remove = false, good = true;
+-        if (success)
+-        {
+-          crypto::hash file_hash;
+-          if (!tools::sha256sum(tmppath, file_hash))
+-          {
+-            MCERROR("updates", "Failed to hash " << tmppath);
+-            remove = true;
+-            good = false;
+-          }
+-          else if (hash != epee::string_tools::pod_to_hex(file_hash))
+-          {
+-            MCERROR("updates", "Download from " << uri << " does not match the expected hash");
+-            remove = true;
+-            good = false;
+-          }
+-        }
+-        else
+-        {
+-          MCERROR("updates", "Failed to download " << uri);
+-          good = false;
+-        }
+-        boost::unique_lock<boost::mutex> lock(m_update_mutex);
+-        m_update_download = 0;
+-        if (success && !remove)
+-        {
+-          std::error_code e = tools::replace_file(tmppath, path.string());
+-          if (e)
+-          {
+-            MCERROR("updates", "Failed to rename downloaded file");
+-            good = false;
+-          }
+-        }
+-        else if (remove)
+-        {
+-          if (!boost::filesystem::remove(tmppath))
+-          {
+-            MCERROR("updates", "Failed to remove invalid downloaded file");
+-            good = false;
+-          }
+-        }
+-        if (good)
+-          MCLOG_CYAN(el::Level::Info, "updates", "New version downloaded to " << path.string());
+-      }, [this](const std::string &path, const std::string &uri, size_t length, ssize_t content_length) {
+-        if (length >= m_last_update_length + 1024 * 1024 * 10)
+-        {
+-          m_last_update_length = length;
+-          MCDEBUG("updates", "Downloaded " << length << "/" << (content_length ? std::to_string(content_length) : "unknown"));
+-        }
+-        return true;
+-      });
+-    }
+-    else
+-    {
+-      MCDEBUG("updates", "We already have " << path << " with expected hash");
+-    }
+-
+-    lock.unlock();
+-
+-    if (check_updates_level == UPDATES_DOWNLOAD)
+-      return true;
+-
+-    MCERROR("updates", "Download/update not implemented yet");
++    // MeepCoin: NO-OP, AND NO NETWORK.
++    //
++    // The inherited body resolved updates.moneropulse.* over DNS, compared versions, and could
++    // download a replacement binary from getmonero.org into this daemon's own directory. All of it
++    // is removed -- not gated behind a flag -- because there is no MeepCoin update authority to
++    // point it at, and pointing it at Monero's would be a supply-chain hole, not a feature.
++    //
++    // --check-updates is refused unless it is "disabled", and this timer is no longer scheduled, so
++    // this function is unreachable in an ordinary run. It stays defined, and stays honest, rather
++    // than being deleted and leaving a caller to find out at link time.
++    m_update_available = false;
+     return true;
+   }
+   //-----------------------------------------------------------------------------------------------
+diff --git a/src/cryptonote_core/cryptonote_tx_utils.cpp b/src/cryptonote_core/cryptonote_tx_utils.cpp
+index 891144696b5ef4d09cb2b964bd6411d27432c79d..3ec9171ec918eecb2f62fde0a623643f6d2870e7 100644
+--- a/src/cryptonote_core/cryptonote_tx_utils.cpp
++++ b/src/cryptonote_core/cryptonote_tx_utils.cpp
+@@ -709,34 +709,24 @@ namespace cryptonote
+     bl.major_version = CURRENT_BLOCK_MAJOR_VERSION;
+     bl.minor_version = CURRENT_BLOCK_MINOR_VERSION;
+     // ---------------------------------------------------------------------------------------
+-    // MEEPCOIN EXPERIMENTAL GENESIS TIMESTAMP OVERRIDE -- TEST BINARY ONLY, NEVER FOR ADOPTION.
++    // MEEPCOIN: THE GENESIS TIMESTAMP IS A COMPILE-TIME CONSTANT. THERE IS NO RUNTIME OVERRIDE.
+     //
+-    // Absent MEEPCOIN_EXPERIMENTAL_GENESIS_TS the behaviour is byte-identical to the compiled
+-    // constant. When present, the genesis timestamp is taken from the environment so that an
+-    // isolated experimental chain can be started with a genesis age near zero, which is what the
+-    // minority-attacker experiment requires and what a compile-time constant cannot provide across
+-    // many runs.
++    // This is shared PRODUCTION code. The daemon reaches it from Blockchain::init() when it
++    // initializes an empty database, and the wallet reaches it from wallet2 when it derives the
++    // network's genesis. An earlier revision read MEEPCOIN_EXPERIMENTAL_GENESIS_TS here so that
++    // throwaway experiment chains could be given a genesis age near zero.
+     //
+-    // A run-time-settable genesis timestamp is NOT a valid consensus design: two nodes with
+-    // different environments would build different chains. It exists here only so that test chains
+-    // can be made genuinely fresh, and it announces itself loudly at startup.
++    // That was a network-identity defect, not a convenience. Two copies of the SAME binary would
++    // construct DIFFERENT genesis blocks -- different timestamp, different hashing blob, different
++    // block id -- purely because one of them inherited an environment variable. A loud warning does
++    // not make that safe, and neither would an ordinary runtime flag. The override is removed with
++    // no replacement.
++    //
++    // The historical Python measurement launchers that set MEEPCOIN_EXPERIMENTAL_GENESIS_TS depend
++    // on a hook that no longer exists. They are NO-GO until separately redesigned; the reasoning is
++    // in src/meepcoin_genesis/HARNESS_COMPAT.md. They were deliberately NOT edited here.
+     // ---------------------------------------------------------------------------------------
+     bl.timestamp = MEEPCOIN_GENESIS_TIMESTAMP;  // MeepCoin: real genesis time, not 0
+-    {
+-      const char *meep_exp_gts = getenv("MEEPCOIN_EXPERIMENTAL_GENESIS_TS");
+-      if (meep_exp_gts && *meep_exp_gts)
+-      {
+-        const uint64_t v = strtoull(meep_exp_gts, NULL, 10);
+-        if (v)
+-        {
+-          bl.timestamp = v;
+-          MGINFO_RED("EXPERIMENTAL BUILD: genesis timestamp overridden from the environment to "
+-                     << v << " (compiled default " << (uint64_t)MEEPCOIN_GENESIS_TIMESTAMP
+-                     << "). This build is for isolated testing only and its chain is not "
+-                        "compatible with any other.");
+-        }
+-      }
+-    }
+     bl.nonce = nonce;
+     miner::find_nonce_for_given_block([](const cryptonote::block &b, uint64_t height, const crypto::hash *seed_hash, unsigned int threads, crypto::hash &hash){
+       return cryptonote::get_block_longhash(NULL, b, hash, height, seed_hash, threads);
+diff --git a/src/meepcoin_genesis/CMakeLists.txt b/src/meepcoin_genesis/CMakeLists.txt
+index cc3393520b2aa62cc57f8536cd79f8ae8bd0f2b3..5f90edec7e6440b00d54e675536a371e3d4331cf 100644
+--- a/src/meepcoin_genesis/CMakeLists.txt
++++ b/src/meepcoin_genesis/CMakeLists.txt
+@@ -36,6 +36,11 @@ target_link_libraries(meepcoin-trust-anchor-test PRIVATE cryptonote_core crypton
+   ${Boost_PROGRAM_OPTIONS_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_FILESYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} ${EXTRA_LIBRARIES})
+ set_property(TARGET meepcoin-trust-anchor-test PROPERTY RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+ 
++add_executable(meepcoin-runtime-quarantine-test meepcoin_runtime_quarantine_test.cpp)
++target_link_libraries(meepcoin-runtime-quarantine-test PRIVATE cryptonote_core cryptonote_basic cncrypto common epee ringct
++  ${Boost_PROGRAM_OPTIONS_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_FILESYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} ${EXTRA_LIBRARIES})
++set_property(TARGET meepcoin-runtime-quarantine-test PROPERTY RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
++
+ add_executable(meepcoin-decimal-test meepcoin_decimal_test.cpp)
+ target_link_libraries(meepcoin-decimal-test PRIVATE cryptonote_basic cryptonote_format_utils_basic serialization cncrypto common epee
+   ${Boost_PROGRAM_OPTIONS_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_FILESYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} ${EXTRA_LIBRARIES})
+diff --git a/src/meepcoin_genesis/HARNESS_COMPAT.md b/src/meepcoin_genesis/HARNESS_COMPAT.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..6745186ea036cf9ada9d7c7ff18707be31073e4c
+--- /dev/null
++++ b/src/meepcoin_genesis/HARNESS_COMPAT.md
+@@ -0,0 +1,53 @@
++# Harness compatibility: the removed experimental-genesis hook
++
++## What changed
++
++`cryptonote::generate_genesis_block()` no longer reads `MEEPCOIN_EXPERIMENTAL_GENESIS_TS`.
++The genesis timestamp is `MEEPCOIN_GENESIS_TIMESTAMP`, a compile-time constant, and there is
++no runtime override of any kind — not an environment variable, not a command-line flag.
++
++## Why it had to go
++
++`generate_genesis_block()` is **shared production code**, not a test helper. It is reached from:
++
++- `Blockchain::init()` (`src/cryptonote_core/blockchain.cpp`), when the daemon initializes an
++  empty database, i.e. on every first start of every node;
++- `wallet2` (`src/wallet/wallet2.cpp`), when the wallet derives the network's genesis;
++- the MeepCoin genesis tools and tests.
++
++With the override in place, two copies of the **same binary** could construct **different genesis
++blocks** — different timestamp, different hashing blob, different block id, therefore a different
++chain — solely because one of them inherited an environment variable. Nothing about that is
++detectable by the other node until the handshake fails, and nothing about it is fixed by the loud
++red warning the old code printed. A genesis that depends on the environment is not a genesis.
++
++Replacing it with an ordinary runtime flag would have the identical defect, so it was removed with
++no replacement.
++
++## What this breaks, and what was deliberately *not* done
++
++The older Python measurement launchers set `MEEPCOIN_EXPERIMENTAL_GENESIS_TS` so that a throwaway
++experiment chain could be started with a genesis age near zero. Those launchers depend on a hook
++that no longer exists.
++
++**They are NO-GO until separately redesigned.** They were deliberately **not** edited in this
++round, and the old measurement machine was deliberately **not** revived:
++
++- editing each script would imply they are expected to run again in their current form;
++- a fresh-genesis capability for isolated experiments is a real need, but it belongs in a
++  *separate build* (a compile-time constant chosen at configure time, or a dedicated
++  experiment-only target), not in a runtime switch inside shared production code.
++
++That redesign is out of scope here and has not been done. Anyone reaching for those scripts should
++expect them to produce the compiled genesis regardless of what they set in the environment.
++
++## What still works
++
++- `meepcoin-genesis`, `meepcoin-genesis16`, `meepcoin-blockhashing` and the focused tests all use
++  the compiled constant and are unaffected.
++- Nothing about the genesis **values** changed: `MEEPCOIN_GENESIS_TIMESTAMP`, `GENESIS_TX`,
++  `GENESIS_NONCE`, the network IDs, ports and address prefixes are byte-identical to the previous
++  commit. Only the ability to override the timestamp at runtime was removed.
++
++`meepcoin-runtime-quarantine-test` asserts exactly that: with the variable absent and with it set
++to two different valid-looking timestamps, all three networks produce a byte-identical genesis.
+diff --git a/src/meepcoin_genesis/meepcoin_runtime_quarantine_guards.sh b/src/meepcoin_genesis/meepcoin_runtime_quarantine_guards.sh
+new file mode 100644
+index 0000000000000000000000000000000000000000..205333c10ee89c1756e6cbd5594fc7b6fde765fc
+--- /dev/null
++++ b/src/meepcoin_genesis/meepcoin_runtime_quarantine_guards.sh
+@@ -0,0 +1,256 @@
++#!/bin/sh
++# MeepCoin: SOURCE AND CONFIGURATION GUARDS for the inherited Monero runtime contacts.
++#
++# The companion binary (meepcoin-runtime-quarantine-test) proves what can be proven by running
++# code: that the genesis is environment-independent and that the shared update helper fails closed.
++# This script proves the things a binary cannot, and the things it would be irresponsible to prove
++# by running them:
++#
++#   - a removed peer seed is only removed if the literal is gone from the source. Instantiating
++#     node_server<> to ask it for its seed list needs a live core and a database;
++#   - "the DNS resolver no longer probes on construction" is honestly proven by reading the
++#     constructor, NOT by constructing one and hoping nothing leaves the machine;
++#   - "--enable-dns-blocklist is refused" is a startup-validation property, and exercising it for
++#     real would mean starting a daemon, which this round explicitly does not do.
++#
++# THIS SCRIPT MAKES NO NETWORK REQUEST. It reads files and runs grep.
++#
++# COMMENT-AWARE. The MeepCoin sources deliberately explain, in comments, exactly which Monero
++# endpoint each change removed. A naive grep for "moneropulse" therefore matches the explanation
++# rather than a live endpoint. code_grep() below strips // comment lines before matching, so these
++# guards test code and not prose. That is not a loophole: a real endpoint literal lives on a code
++# line, and the accompanying binary-strings check in the build recipe catches anything that somehow
++# reached .rodata anyway.
++#
++# Usage:  sh src/meepcoin_genesis/meepcoin_runtime_quarantine_guards.sh  [repo-root]
++
++ROOT=${1:-$(cd "$(dirname "$0")/../.." && pwd)}
++cd "$ROOT" || { echo "cannot cd to $ROOT"; exit 2; }
++
++PASS=0
++FAIL=0
++
++ok()   { PASS=$((PASS+1)); printf '  ok    %s\n' "$1"; }
++bad()  { FAIL=$((FAIL+1)); printf '  FAIL  %s\n' "$1"; }
++
++# 0 if a NON-COMMENT line in $1 matches $2
++code_grep() {
++  grep -n "$2" "$1" 2>/dev/null | sed 's/^[0-9]*://' | grep -v '^[[:space:]]*//' | grep -q .
++}
++
++# assert that no non-comment line of $1 matches $2
++absent() { # file pattern label
++  if code_grep "$1" "$2"; then bad "$3"; else ok "$3"; fi
++}
++
++# assert that some line of $1 matches $2 (comments included: used for required behaviour)
++present() { # file pattern label
++  if grep -q "$2" "$1" 2>/dev/null; then ok "$3"; else bad "$3"; fi
++}
++
++echo "================================================================="
++echo "MeepCoin runtime-quarantine source guards"
++echo "repo: $ROOT"
++echo "NOTE: this script makes no DNS, TCP or HTTP request."
++echo "================================================================="
++
++# ---------------------------------------------------------------- 1. deterministic genesis
++echo
++echo "-- genesis is environment-independent --"
++
++GEN=src/cryptonote_core/cryptonote_tx_utils.cpp
++if grep -rn "getenv[[:space:]]*([[:space:]]*\"MEEPCOIN_EXPERIMENTAL_GENESIS_TS\"" \
++     src/ --include=*.cpp --include=*.h --include=*.inl 2>/dev/null \
++   | sed 's/^[^:]*:[0-9]*://' | grep -v '^[[:space:]]*//' | grep -q .; then
++  bad "no production source reads MEEPCOIN_EXPERIMENTAL_GENESIS_TS"
++else
++  ok "no production source reads MEEPCOIN_EXPERIMENTAL_GENESIS_TS"
++fi
++
++absent "$GEN" 'MGINFO_RED("EXPERIMENTAL BUILD' "the experimental-genesis warning is gone"
++present "$GEN" 'bl.timestamp = MEEPCOIN_GENESIS_TIMESTAMP' "genesis timestamp comes from the compiled constant"
++present src/meepcoin_genesis/HARNESS_COMPAT.md 'NO-GO until separately redesigned' \
++  "HARNESS_COMPAT.md records that the old launchers are NO-GO"
++
++# The genesis VALUES must not have moved in this commit.
++present src/cryptonote_config.h 'MEEPCOIN_GENESIS_TIMESTAMP              1785283200ULL' \
++  "MEEPCOIN_GENESIS_TIMESTAMP is unchanged"
++
++# ---------------------------------------------------------------- 2. peer discovery defaults
++echo
++echo "-- no inherited default peer --"
++
++NN_H=src/p2p/net_node.h
++NN_I=src/p2p/net_node.inl
++
++present "$NN_H" 'const std::vector<std::string> m_seed_nodes_list = {};' \
++  "the clearnet DNS seed list is empty"
++
++for d in seeds.moneroseeds.se seeds.moneroseeds.ae.org seeds.moneroseeds.ch seeds.moneroseeds.li; do
++  absent "$NN_H" "\"$d\"" "clearnet seed removed: $d"
++done
++
++for ip in "176.9.0.187:18080" "88.198.163.90:18080" "192.99.8.110:18080" \
++          "37.187.74.171:18080" "88.99.195.15:18080" "5.104.84.64:18080" \
++          "176.9.0.187:28080" "192.99.8.110:28080" "37.187.74.171:28080" \
++          "88.99.195.15:28080" "5.104.84.64:28080" \
++          "176.9.0.187:38080" "192.99.8.110:38080" "37.187.74.171:38080" \
++          "88.99.195.15:38080" "5.104.84.64:38080"; do
++  absent "$NN_I" "\"$ip\"" "fallback IP seed removed: $ip"
++done
++
++absent "$NN_I" '\.onion:18083' "all six inherited onion seeds removed"
++absent "$NN_I" 'b32\.i2p"' "all three inherited I2P seeds removed"
++
++present "$NN_I" 'no bootstrap seeds are configured' \
++  "the daemon says plainly that it has no peer to contact"
++
++# Explicit operator paths must still exist. These are the CLI option names as an operator types
++# them -- "seed-node", not the arg_p2p_seed_node descriptor variable that declares it.
++for a in seed-node add-peer add-priority-node add-exclusive-node; do
++  if grep -q "\"$a\"" src/p2p/net_node.cpp 2>/dev/null; then
++    ok "operator peer option still registered: --$a"
++  else
++    bad "operator peer option still registered: --$a"
++  fi
++done
++
++# ---------------------------------------------------------------- 3. DNS blocklist
++echo
++echo "-- DNS blocklist refused, endpoints gone --"
++
++for d in blocklist.moneropulse.se blocklist.moneropulse.org blocklist.moneropulse.net \
++         blocklist.moneropulse.co blocklist.moneropulse.fr blocklist.moneropulse.de \
++         blocklist.moneropulse.ch; do
++  absent "$NN_I" "\"$d\"" "blocklist endpoint removed: $d"
++done
++
++present "$NN_I" 'is not supported by MeepCoin: the inherited' \
++  "--enable-dns-blocklist is refused at argument handling"
++absent "$NN_I" 'm_enable_dns_blocklist = command_line::get_arg' \
++  "--enable-dns-blocklist no longer feeds the flag directly"
++present "$NN_I" 'm_enable_dns_blocklist = false;' \
++  "the blocklist flag is forced off"
++
++# ---------------------------------------------------------------- 4. update supply chain
++echo
++echo "-- update supply chain removed --"
++
++UPD=src/common/updates.cpp
++CORE=src/cryptonote_core/cryptonote_core.cpp
++RPC=src/rpc/core_rpc_server.cpp
++
++for d in updates.moneropulse.org updates.moneropulse.net updates.moneropulse.fr \
++         updates.moneropulse.de updates.moneropulse.co updates.moneropulse.ch \
++         updates.moneropulse.se; do
++  absent "$UPD" "\"$d\"" "update endpoint removed: $d"
++done
++
++absent "$UPD" 'https://downloads.getmonero.org/' "download base URL removed: downloads.getmonero.org"
++absent "$UPD" 'https://updates.getmonero.org/'   "download base URL removed: updates.getmonero.org"
++absent "$UPD" 'load_txt_records_from_dns'        "the update helper performs no DNS lookup"
++
++present "$CORE" ', "disabled"' "--check-updates defaults to disabled"
++present "$CORE" 'is not supported by MeepCoin: the inherited update' \
++  "a non-disabled --check-updates value is refused"
++absent "$CORE" 'check_updates_string == "notify"'   "the notify mode is gone"
++absent "$CORE" 'check_updates_string == "download"' "the download mode is gone"
++absent "$CORE" 'check_updates_string == "update"'   "the update mode is gone"
++absent "$CORE" 'm_check_updates_interval.do_call'   "the periodic update check is not scheduled"
++
++# Match the CALL, not the type. core::stop() still declares a tools::download_async_handle and
++# cancels it, which is correct and inert: m_update_download is initialised to 0 and nothing assigns
++# it any more, so the handle is always 0 and download_cancel() is never reached. What must be gone
++# is the thing that STARTS a download.
++absent "$CORE" 'tools::download_async(' "the core cannot start an update download"
++if grep -n 'm_update_download *=' "$CORE" 2>/dev/null | grep -v '= 0;' | grep -v '^[[:space:]]*//' | grep -q .; then
++  bad "m_update_download is never assigned a live download handle"
++else
++  ok "m_update_download is never assigned a live download handle"
++fi
++
++absent "$RPC" 'tools::check_updates'   "the update RPC no longer calls the update helper"
++absent "$RPC" 'tools::download('       "the update RPC cannot download"
++present "$RPC" 'update checking is not supported by MeepCoin' \
++  "the update RPC returns an explicit unsupported result"
++
++# ---------------------------------------------------------------- 5. general DNS resolver
++echo
++echo "-- DNS resolver does not probe on construction --"
++
++DNS=src/common/dns_utils.cpp
++
++# Bound the check to the constructor body, so an unrelated later use of get_txt_record (the public
++# API, which callers legitimately use) does not mask or fake this result.
++CTOR=$(awk '/^DNSResolver::DNSResolver\(\)/,/^DNSResolver::~DNSResolver/' "$DNS")
++
++if printf '%s\n' "$CTOR" | sed 's#//.*##' | grep -q 'probe_hostname'; then
++  bad "the constructor has no probe hostname"
++else
++  ok "the constructor has no probe hostname"
++fi
++if printf '%s\n' "$CTOR" | sed 's#//.*##' | grep -q 'get_txt_record'; then
++  bad "the constructor performs no DNS lookup"
++else
++  ok "the constructor performs no DNS lookup"
++fi
++if printf '%s\n' "$CTOR" | sed 's#//.*##' | grep -q 'DEFAULT_DNS_PUBLIC_ADDR'; then
++  bad "the constructor has no hidden public-resolver fallback"
++else
++  ok "the constructor has no hidden public-resolver fallback"
++fi
++
++# Explicitly configured behaviour must SURVIVE. This is not a general DNS rewrite.
++printf '%s\n' "$CTOR" | grep -q 'getenv("DNS_PUBLIC")' \
++  && ok "explicit DNS_PUBLIC configuration still honoured" \
++  || bad "explicit DNS_PUBLIC configuration still honoured"
++printf '%s\n' "$CTOR" | grep -q 'ub_ctx_resolvconf' \
++  && ok "the system resolver is still used by default" \
++  || bad "the system resolver is still used by default"
++present src/common/dns_utils.h 'get_record' "generic DNS/OpenAlias API is still present"
++
++# ---------------------------------------------------------------- 6. scope invariants
++echo
++echo "-- scope invariants: nothing else moved --"
++
++# These files must be byte-identical to the previous commit (19a27b8). Consensus values, the
++# hash, the wallet key format and the hardfork schedule are all out of scope for this round.
++BASE=19a27b83dfc33b9d21e0d4b29b91570243e44f8a
++for f in src/cryptonote_config.h \
++         src/crypto/meep-hash.cpp \
++         src/crypto/meep-hash.h \
++         src/hardforks/hardforks.cpp \
++         src/cryptonote_basic/hardfork.cpp \
++         src/cryptonote_basic/hardfork.h \
++         src/blockchain_db/blockchain_db.cpp \
++         src/checkpoints/checkpoints.cpp \
++         src/wallet/wallet2.cpp \
++         src/simplewallet/simplewallet.cpp; do
++  if git cat-file -e "$BASE:$f" 2>/dev/null; then
++    if git diff --quiet "$BASE" -- "$f" 2>/dev/null; then
++      ok "unchanged since $(echo $BASE | cut -c1-7): $f"
++    else
++      bad "unchanged since $(echo $BASE | cut -c1-7): $f"
++    fi
++  else
++    bad "expected file present at $(echo $BASE | cut -c1-7): $f"
++  fi
++done
++
++# The previous round's consensus correction must still hold.
++if [ -e src/blocks/checkpoints.dat ]; then
++  bad "the inherited Monero checkpoint blob is still deleted"
++else
++  ok "the inherited Monero checkpoint blob is still deleted"
++fi
++
++echo
++echo "================================================================="
++echo "RESULT: $PASS passed, $FAIL failed"
++if [ "$FAIL" -eq 0 ]; then
++  echo "RUNTIME QUARANTINE GUARDS: PASS"
++  exit 0
++else
++  echo "RUNTIME QUARANTINE GUARDS: FAIL"
++  exit 1
++fi
+diff --git a/src/meepcoin_genesis/meepcoin_runtime_quarantine_test.cpp b/src/meepcoin_genesis/meepcoin_runtime_quarantine_test.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..eab3dbb58f962d1a861c48e912ffebdc486ea500
+--- /dev/null
++++ b/src/meepcoin_genesis/meepcoin_runtime_quarantine_test.cpp
+@@ -0,0 +1,251 @@
++// MeepCoin: regression tests for the INHERITED MONERO RUNTIME CONTACTS.
++//
++// The previous round removed Monero's inherited *consensus* trust anchors. This one covers a
++// different class of defect: things an ordinary daemon does at runtime that reach out to, or take
++// instruction from, another project's infrastructure -- and one thing it did locally that was
++// worse than any of them.
++//
++// THE LOCAL ONE FIRST. cryptonote::generate_genesis_block() used to read an environment variable,
++// MEEPCOIN_EXPERIMENTAL_GENESIS_TS, and use it as the genesis timestamp. That function is shared
++// production code: the daemon calls it when it initializes an empty database, and the wallet calls
++// it when it derives the network's genesis. So two copies of the SAME binary could construct
++// DIFFERENT genesis blocks -- different timestamp, different hashing blob, different block id --
++// purely because one of them inherited an environment variable. That is a network-identity defect,
++// and a warning printed at startup does not fix it. See HARNESS_COMPAT.md.
++//
++// THE CONTACT ONES. tools::check_updates() resolved updates.moneropulse.* TXT records and
++// tools::get_update_url() built a download URL under getmonero.org. Both are shared by the daemon's
++// periodic check, the daemon's update RPC, and the wallet API, so all three had to be fixed at
++// once. They now fail closed with cleared outputs and no URL.
++//
++// WHAT THIS FILE DOES NOT COVER, AND WHY. The removed peer seeds (clearnet DNS, fallback IPs, Tor,
++// I2P), the refused --enable-dns-blocklist, and the removed DNSResolver probe are NOT asserted
++// here. Instantiating node_server<> needs a live core and would build a database; and the honest
++// way to prove the DNS probe is gone is to read the constructor, not to construct one and hope
++// nothing leaves the machine. Those are asserted by meepcoin_runtime_quarantine_guards.sh against
++// the source, and again against the built daemon's strings. Neither this binary nor that script
++// makes a DNS, TCP or HTTP request.
++//
++// Why a standalone binary rather than a case in tests/unit_tests/: the pinned build configures
++// BUILD_TESTS=OFF, so anything added there would never run. Same reasoning, and same shape, as
++// meepcoin_hardfork_test.cpp and meepcoin_trust_anchor_test.cpp.
++//
++// LOCALHOST / PRIVATE DEVELOPMENT CHAIN. Dev/test coins with no monetary value.
++
++#include <cstdint>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <string>
++#include <vector>
++
++#include "crypto/hash.h"
++#include "crypto/meep-hash.h"
++#include "serialization/string.h"   // get_object_hash(blobdata) needs the std::string serializer
++#include "cryptonote_basic/cryptonote_basic.h"
++#include "cryptonote_basic/cryptonote_format_utils.h"
++#include "cryptonote_config.h"
++#include "cryptonote_core/cryptonote_tx_utils.h"
++#include "common/updates.h"
++#include "string_tools.h"
++
++using namespace cryptonote;
++
++namespace
++{
++int g_pass = 0;
++int g_fail = 0;
++
++void chk(bool ok, const char *what)
++{
++  if (ok) { ++g_pass; printf("  ok    %s\n", what); }
++  else    { ++g_fail; printf("  FAIL  %s\n", what); }
++}
++
++std::string hex(const crypto::hash &h)
++{
++  return epee::string_tools::pod_to_hex(h);
++}
++
++struct netcase { const char *name; std::string tx; uint32_t nonce; };
++
++const netcase g_nets[] = {
++  { "MAINNET",  ::config::GENESIS_TX,           ::config::GENESIS_NONCE           },
++  { "TESTNET",  ::config::testnet::GENESIS_TX,  ::config::testnet::GENESIS_NONCE  },
++  { "STAGENET", ::config::stagenet::GENESIS_TX, ::config::stagenet::GENESIS_NONCE },
++};
++
++/** Everything about a genesis block that a peer would disagree with us about. */
++struct genesis_identity
++{
++  bool        generated;
++  uint64_t    timestamp;
++  std::string hashing_blob;   // the exact bytes that are hashed
++  std::string block_id;
++
++  genesis_identity() : generated(false), timestamp(0) {}
++};
++
++genesis_identity capture(const netcase &n)
++{
++  genesis_identity g;
++  block bl;
++  g.generated = generate_genesis_block(bl, n.tx, n.nonce);
++  if (!g.generated)
++    return g;
++  g.timestamp    = bl.timestamp;
++  const blobdata hb = get_block_hashing_blob(bl);
++  g.hashing_blob = epee::string_tools::buff_to_hex_nodelimer(hb);
++  crypto::hash id;
++  g.block_id = get_block_hash(bl, id) ? hex(id) : std::string("<uncomputable>");
++  return g;
++}
++
++// ---------------------------------------------------------------------------------------------
++// 1. The genesis is a property of the binary, not of the environment it inherited.
++// ---------------------------------------------------------------------------------------------
++void test_genesis_is_environment_independent()
++{
++  printf("\n-- genesis determinism: no environment variable can move it --\n");
++
++  // Two distinct, plausible timestamps. Either would have been accepted by the removed override:
++  // 2026-06-01T00:00:00Z and 2021-01-01T00:00:00Z. Neither is the compiled constant.
++  static const char *const probes[] = { "1780272000", "1609459200" };
++
++  unsetenv("MEEPCOIN_EXPERIMENTAL_GENESIS_TS");
++
++  for (size_t ni = 0; ni < sizeof(g_nets)/sizeof(g_nets[0]); ++ni)
++  {
++    const netcase &n = g_nets[ni];
++    const genesis_identity base = capture(n);
++
++    char label[256];
++    snprintf(label, sizeof(label), "%s: genesis is generated with the variable unset", n.name);
++    chk(base.generated, label);
++    if (!base.generated) continue;
++
++    snprintf(label, sizeof(label),
++             "%s: genesis timestamp is the compiled constant %llu",
++             n.name, (unsigned long long)MEEPCOIN_GENESIS_TIMESTAMP);
++    chk(base.timestamp == (uint64_t)MEEPCOIN_GENESIS_TIMESTAMP, label);
++
++    snprintf(label, sizeof(label), "%s: genesis id %.12s is computable", n.name, base.block_id.c_str());
++    chk(base.block_id != "<uncomputable>", label);
++
++    for (size_t pi = 0; pi < sizeof(probes)/sizeof(probes[0]); ++pi)
++    {
++      const char *p = probes[pi];
++      setenv("MEEPCOIN_EXPERIMENTAL_GENESIS_TS", p, 1);
++      const genesis_identity got = capture(n);
++      unsetenv("MEEPCOIN_EXPERIMENTAL_GENESIS_TS");
++
++      snprintf(label, sizeof(label), "%s: still generated with the variable set to %s", n.name, p);
++      chk(got.generated, label);
++      if (!got.generated) continue;
++
++      snprintf(label, sizeof(label), "%s: timestamp unmoved by MEEPCOIN_EXPERIMENTAL_GENESIS_TS=%s", n.name, p);
++      chk(got.timestamp == base.timestamp, label);
++
++      snprintf(label, sizeof(label), "%s: hashing blob byte-identical with the variable set to %s", n.name, p);
++      chk(got.hashing_blob == base.hashing_blob, label);
++
++      snprintf(label, sizeof(label), "%s: block id byte-identical with the variable set to %s", n.name, p);
++      chk(got.block_id == base.block_id, label);
++    }
++  }
++
++  // Set-then-unset inside one process: catches a cached first read as well as a live one. This
++  // does NOT prove the name is unread everywhere -- meepcoin_runtime_quarantine_guards.sh asserts
++  // separately that no production source calls getenv on it at all.
++  setenv("MEEPCOIN_EXPERIMENTAL_GENESIS_TS", "1780272000", 1);
++  const genesis_identity a = capture(g_nets[0]);
++  unsetenv("MEEPCOIN_EXPERIMENTAL_GENESIS_TS");
++  const genesis_identity b = capture(g_nets[0]);
++  chk(a.generated && b.generated
++      && a.timestamp == b.timestamp
++      && a.hashing_blob == b.hashing_blob
++      && a.block_id == b.block_id,
++      "MAINNET: set-then-unset produces the identical genesis in one process");
++}
++
++// ---------------------------------------------------------------------------------------------
++// 2. The genesis values themselves did not move in this commit.
++// ---------------------------------------------------------------------------------------------
++void test_genesis_values_unchanged()
++{
++  printf("\n-- genesis identity: unchanged from the previous commit --\n");
++
++  // These are the ids the trust-anchor test already reports for the three configured networks.
++  // Pinning them here means a future edit to the genesis constants -- which this round explicitly
++  // may NOT make -- fails loudly instead of silently producing a different chain.
++  struct expect_t { const char *name; const char *prefix; };
++  static const expect_t expected[] = {
++    { "MAINNET",  "5ee18340" },
++    { "TESTNET",  "871bc633" },
++    { "STAGENET", "825a2f71" },
++  };
++
++  for (size_t i = 0; i < sizeof(g_nets)/sizeof(g_nets[0]); ++i)
++  {
++    const genesis_identity g = capture(g_nets[i]);
++    char label[256];
++    snprintf(label, sizeof(label), "%s: genesis id still begins %s (got %.8s)",
++             expected[i].name, expected[i].prefix, g.block_id.c_str());
++    chk(g.generated && g.block_id.compare(0, 8, expected[i].prefix) == 0, label);
++  }
++
++  chk((uint64_t)MEEPCOIN_GENESIS_TIMESTAMP == 1785283200ULL,
++      "MEEPCOIN_GENESIS_TIMESTAMP is still 1785283200");
++}
++
++// ---------------------------------------------------------------------------------------------
++// 3. The shared update helper fails closed and hands out no URL.
++// ---------------------------------------------------------------------------------------------
++void test_update_helper_fails_closed()
++{
++  printf("\n-- update supply chain: fails closed, no DNS, no URL --\n");
++
++  // Deliberately pre-poisoned: if the implementation returned early without clearing them, the
++  // caller would keep believing an update exists. Monero's daemon, its update RPC and the wallet
++  // API all share this one function, so this is the single point that has to be right.
++  std::string version = "9.9.9";
++  std::string hash    = "deadbeef";
++
++  const bool found = tools::check_updates("meepcoin", "source", version, hash);
++
++  chk(!found, "tools::check_updates() reports no update");
++  chk(version.empty(), "tools::check_updates() clears the version output");
++  chk(hash.empty(), "tools::check_updates() clears the hash output");
++
++  const std::string user_uri = tools::get_update_url("meepcoin", "source", "source", "0.18.5.1", true);
++  const std::string auto_uri = tools::get_update_url("meepcoin", "source", "source", "0.18.5.1", false);
++
++  chk(user_uri.empty(), "tools::get_update_url(user=true) returns no URL");
++  chk(auto_uri.empty(), "tools::get_update_url(user=false) returns no URL");
++
++  // Whatever they return, it must not name anyone's infrastructure.
++  const std::string both = user_uri + auto_uri + version + hash;
++  chk(both.find("getmonero") == std::string::npos, "no getmonero host in any update output");
++  chk(both.find("moneropulse") == std::string::npos, "no moneropulse host in any update output");
++}
++
++} // namespace
++
++int main()
++{
++  printf("=================================================================\n");
++  printf("MeepCoin inherited-runtime-contact tests\n");
++  printf("NOTE: this binary makes no DNS, TCP or HTTP request.\n");
++  printf("=================================================================\n");
++
++  test_genesis_is_environment_independent();
++  test_genesis_values_unchanged();
++  test_update_helper_fails_closed();
++
++  meep_slow_hash_free_state();
++
++  printf("\n=================================================================\n");
++  printf("RESULT: %d passed, %d failed\n", g_pass, g_fail);
++  printf("RUNTIME QUARANTINE TESTS: %s\n", g_fail == 0 ? "PASS" : "FAIL");
++  return g_fail == 0 ? 0 : 1;
++}
+diff --git a/src/p2p/net_node.h b/src/p2p/net_node.h
+index d7cbaa567fe5c384febd6dedd7171edec68fbf8c..5df0d8085392f4a592a6217a5a9d88646dbb60d5 100644
+--- a/src/p2p/net_node.h
++++ b/src/p2p/net_node.h
+@@ -295,12 +295,18 @@ namespace nodetool
+     virtual void clear_used_stripe_peers();
+ 
+   private:
+-    const std::vector<std::string> m_seed_nodes_list =
+-    { "seeds.moneroseeds.se"
+-    , "seeds.moneroseeds.ae.org"
+-    , "seeds.moneroseeds.ch"
+-    , "seeds.moneroseeds.li"
+-    };
++    // MeepCoin: NO INHERITED BOOTSTRAP SEEDS.
++    //
++    // Monero's four clearnet DNS seed hostnames are removed, not left in place. They resolve to
++    // MONERO nodes. A MeepCoin node cannot join Monero's chain -- the network IDs differ, so the
++    // handshake is rejected -- but the connection attempt still happens first, which announces
++    // this node to a foreign network's operators and gains nothing in return.
++    //
++    // No reviewed MeepCoin bootstrap authority exists, and promoting a machine from this
++    // development environment into a seed would be worse than having none. A node with no
++    // operator-supplied peer therefore has nothing to contact, by design. --seed-node, --add-peer,
++    // --add-priority-node and --add-exclusive-node remain fully supported.
++    const std::vector<std::string> m_seed_nodes_list = {};
+ 
+     bool islimitup=false;
+     bool islimitdown=false;
+diff --git a/src/p2p/net_node.inl b/src/p2p/net_node.inl
+index 91a54f43eb570b1ee4e980989674328c60a67150..07e646bdbe8e4247c0356d337d0ec42596dece3c 100644
+--- a/src/p2p/net_node.inl
++++ b/src/p2p/net_node.inl
+@@ -555,7 +555,24 @@ namespace nodetool
+     if (command_line::has_arg(vm, arg_no_sync))
+       m_payload_handler.set_no_sync(true);
+ 
+-    m_enable_dns_blocklist = command_line::get_arg(vm, arg_enable_dns_blocklist);
++    // MeepCoin: --enable-dns-blocklist IS REFUSED, NOT SILENTLY IGNORED.
++    //
++    // The inherited implementation trusted TXT records from the blocklist.moneropulse.* domains and
++    // blocked whatever addresses they named. That is a standing authority to ban peers, held by
++    // another chain's operators. MeepCoin has no reviewed blocklist authority, and inventing one
++    // here would be a governance decision disguised as a default.
++    //
++    // Accepting the flag and doing nothing would be worse than refusing it: an operator would
++    // believe a protection was active when none was. So the flag fails startup validation, exactly
++    // like --enforce-dns-checkpointing.
++    if (!command_line::is_arg_defaulted(vm, arg_enable_dns_blocklist) && command_line::get_arg(vm, arg_enable_dns_blocklist))
++    {
++      MERROR("--" << arg_enable_dns_blocklist.name << " is not supported by MeepCoin: the inherited "
++             "blocklist came from another chain's DNS records, and no reviewed MeepCoin blocklist "
++             "authority exists. Remove it.");
++      return false;
++    }
++    m_enable_dns_blocklist = false;
+ 
+     if ( !set_max_out_peers(public_zone, command_line::get_arg(vm, arg_out_peers) ) )
+       return false;
+@@ -702,35 +719,17 @@ namespace nodetool
+   template<class t_payload_net_handler>
+   std::set<std::string> node_server<t_payload_net_handler>::get_ip_seed_nodes() const
+   {
++    // MeepCoin: NO INHERITED FALLBACK IP SEEDS.
++    //
++    // Monero shipped sixteen hard-coded seed endpoints here -- six on mainnet port 18080, five on
++    // testnet 28080, five on stagenet 38080. Those are MONERO nodes on MONERO ports. MeepCoin uses
++    // 1908x/2908x/3908x and a different network ID, so a connection there can only fail the
++    // handshake, and it fails it AFTER disclosing that this node exists.
++    //
++    // Returning an empty set is the whole point: an ordinary MeepCoin daemon has no default peer
++    // to contact. Operator-supplied peers are unaffected.
++    (void)m_nettype;
+     std::set<std::string> full_addrs;
+-    if (m_nettype == cryptonote::TESTNET)
+-    {
+-      full_addrs.insert("176.9.0.187:28080");
+-      full_addrs.insert("192.99.8.110:28080");
+-      full_addrs.insert("37.187.74.171:28080");
+-      full_addrs.insert("88.99.195.15:28080");
+-      full_addrs.insert("5.104.84.64:28080");
+-    }
+-    else if (m_nettype == cryptonote::STAGENET)
+-    {
+-      full_addrs.insert("176.9.0.187:38080");
+-      full_addrs.insert("192.99.8.110:38080");
+-      full_addrs.insert("37.187.74.171:38080");
+-      full_addrs.insert("88.99.195.15:38080");
+-      full_addrs.insert("5.104.84.64:38080");
+-    }
+-    else if (m_nettype == cryptonote::FAKECHAIN)
+-    {
+-    }
+-    else
+-    {
+-      full_addrs.insert("176.9.0.187:18080");
+-      full_addrs.insert("88.198.163.90:18080");
+-      full_addrs.insert("192.99.8.110:18080");
+-      full_addrs.insert("37.187.74.171:18080");
+-      full_addrs.insert("88.99.195.15:18080");
+-      full_addrs.insert("5.104.84.64:18080");
+-    }
+     return full_addrs;
+   }
+   //-----------------------------------------------------------------------------------
+@@ -858,27 +857,12 @@ namespace nodetool
+     case epee::net_utils::zone::public_:
+       return get_dns_seed_nodes();
+     case epee::net_utils::zone::tor:
+-      if (m_nettype == cryptonote::MAINNET)
+-      {
+-        return {
+-          "zbjkbsxc5munw3qusl7j2hpcmikhqocdf4pqhnhtpzw5nt5jrmofptid.onion:18083",
+-          "plowsof3t5hogddwabaeiyrno25efmzfxyro2vligremt7sxpsclfaid.onion:18083",
+-          "plowsoffjexmxalw73tkjmf422gq6575fc7vicuu4javzn2ynnte6tyd.onion:18083",
+-          "plowsofe6cleftfmk2raiw5h2x66atrik3nja4bfd3zrfa2hdlgworad.onion:18083",
+-          "aclc4e2jhhtr44guufbnwk5bzwhaecinax4yip4wr4tjn27sjsfg6zqd.onion:18083",
+-          "lykcas4tus7mkm4bhsgqe4drtd4awi7gja24goscc47xfgzj54yofyqd.onion:18083",
+-        };
+-      }
++      // MeepCoin: the six inherited Monero onion seeds are removed. They are hidden services run
++      // by MONERO's seed operators on MONERO's port 18083; reaching them over Tor would still be
++      // contacting a foreign network. No MeepCoin hidden-service seed has been reviewed.
+       return {};
+     case epee::net_utils::zone::i2p:
+-      if (m_nettype == cryptonote::MAINNET)
+-      {
+-        return {
+-          "uqj3aphckqtjsitz7kxx5flqpwjlq5ppr3chazfued7xucv3nheq.b32.i2p",
+-          "vdmnehdjkpkg57nthgnjfuaqgku673r5bpbqg56ix6fyqoywgqrq.b32.i2p",
+-          "ugnlcdciyhghh2zert7c3kl4biwkirc43ke33jiy5slnd3mv2trq.b32.i2p",
+-        };
+-      }
++      // MeepCoin: the three inherited Monero I2P seeds are removed, for the same reason.
+       return {};
+     default:
+       break;
+@@ -948,6 +932,18 @@ namespace nodetool
+     for(const auto& p: m_command_line_peers)
+       m_network_zones.at(p.adr.get_zone()).m_peerlist.append_with_peer_white(p);
+ 
++    // MeepCoin: state the situation instead of leaving it to be inferred from an empty peer list.
++    // Every inherited Monero bootstrap source -- clearnet DNS seeds, fallback IP seeds, onion
++    // seeds, I2P seeds -- has been removed, and no reviewed MeepCoin bootstrap authority exists
++    // yet. Without an explicit operator-supplied peer this node has nothing to contact, which is
++    // the intended behaviour, not a failure.
++    if (!m_offline && m_command_line_peers.empty() && public_zone.m_seed_nodes.empty())
++    {
++      MGINFO_YELLOW("MeepCoin: no bootstrap seeds are configured and no peer was supplied, so this "
++                    "node will not contact any peer. Supply one explicitly with --seed-node, "
++                    "--add-peer, --add-priority-node or --add-exclusive-node.");
++    }
++
+     //only in case if we really sure that we have external visible ip
+     m_have_address = true;
+ 
+@@ -2121,54 +2117,11 @@ namespace nodetool
+   template<class t_payload_net_handler>
+   bool node_server<t_payload_net_handler>::update_dns_blocklist()
+   {
+-    if (!m_enable_dns_blocklist)
+-      return true;
+-    if (m_nettype != cryptonote::MAINNET)
+-      return true;
+-
+-    static const std::vector<std::string> dns_urls = {
+-      "blocklist.moneropulse.se"
+-    , "blocklist.moneropulse.org"
+-    , "blocklist.moneropulse.net"
+-    , "blocklist.moneropulse.co"
+-    , "blocklist.moneropulse.fr"
+-    , "blocklist.moneropulse.de"
+-    , "blocklist.moneropulse.ch"
+-    };
+-
+-    std::vector<std::string> records;
+-    if (!tools::dns_utils::load_txt_records_from_dns(records, dns_urls))
+-      return true;
+-
+-    unsigned good = 0, bad = 0;
+-    for (const auto& record : records)
+-    {
+-      std::vector<std::string> ips;
+-      boost::split(ips, record, boost::is_any_of(";"));
+-      for (const auto &ip: ips)
+-      {
+-        if (ip.empty())
+-          continue;
+-        auto subnet = net::get_ipv4_subnet_address(ip);
+-        if (subnet)
+-        {
+-          block_subnet(*subnet, DNS_BLOCKLIST_LIFETIME);
+-          ++good;
+-          continue;
+-        }
+-        const expect<epee::net_utils::network_address> parsed_addr = net::get_network_address(ip, 0);
+-        if (parsed_addr)
+-        {
+-          block_host(*parsed_addr, DNS_BLOCKLIST_LIFETIME, true);
+-          ++good;
+-          continue;
+-        }
+-        MWARNING("Invalid IP address or subnet from DNS blocklist: " << ip << " - " << parsed_addr.error());
+-        ++bad;
+-      }
+-    }
+-    if (good > 0)
+-      MINFO(good << " addresses added to the blocklist");
++    // MeepCoin: NO DNS BLOCKLIST. The seven inherited blocklist.moneropulse.* endpoints are gone
++    // and nothing replaces them, so this periodic task is a no-op that performs no DNS lookup and
++    // blocks no address. m_enable_dns_blocklist can no longer be set: --enable-dns-blocklist is
++    // refused during argument handling, so this function is doubly inert. Operator-driven banning
++    // (--ban-list, the ban RPC) is unaffected.
+     return true;
+   }
+   //-----------------------------------------------------------------------------------
+diff --git a/src/rpc/core_rpc_server.cpp b/src/rpc/core_rpc_server.cpp
+index c684496302d3ae556d64821d283f567ce55d1767..ae622cf944f68041a2eb01786c74cc28a3889eeb 100644
+--- a/src/rpc/core_rpc_server.cpp
++++ b/src/rpc/core_rpc_server.cpp
+@@ -3130,102 +3130,20 @@ namespace cryptonote
+   {
+     RPC_TRACKER(update);
+ 
++    // MeepCoin: THE UPDATE RPC IS UNSUPPORTED AND PERFORMS NO NETWORK ACTIVITY.
++    //
++    // The inherited handler shared tools::check_updates() with the daemon's periodic check and the
++    // wallet API, so a single RPC call reached updates.moneropulse.* over DNS and could download a
++    // getmonero.org binary to a caller-chosen path. It is answered locally now: no DNS, no HTTP, no
++    // file written, and no URI handed back for someone else to fetch.
+     res.update = false;
+-    if (m_core.offline())
+-    {
+-      res.status = "Daemon is running offline";
+-      return true;
+-    }
+-
+-    static const char software[] = "monero";
+-#ifdef BUILD_TAG
+-    static const char buildtag[] = BOOST_PP_STRINGIZE(BUILD_TAG);
+-    static const char subdir[] = "cli";
+-#else
+-    static const char buildtag[] = "source";
+-    static const char subdir[] = "source";
+-#endif
+-
+-    if (req.command != "check" && req.command != "download" && req.command != "update")
+-    {
+-      res.status = std::string("unknown command: '") + req.command + "'";
+-      return true;
+-    }
+-
+-    std::string version, hash;
+-    if (!tools::check_updates(software, buildtag, version, hash))
+-    {
+-      res.status = "Error checking for updates";
+-      return true;
+-    }
+-    if (tools::vercmp(version.c_str(), MONERO_VERSION) <= 0)
+-    {
+-      res.update = false;
+-      res.status = CORE_RPC_STATUS_OK;
+-      return true;
+-    }
+-    res.update = true;
+-    res.version = version;
+-    res.user_uri = tools::get_update_url(software, subdir, buildtag, version, true);
+-    res.auto_uri = tools::get_update_url(software, subdir, buildtag, version, false);
+-    res.hash = hash;
+-    if (req.command == "check")
+-    {
+-      res.status = CORE_RPC_STATUS_OK;
+-      return true;
+-    }
+-
+-    boost::filesystem::path path;
+-    if (req.path.empty())
+-    {
+-      std::string filename;
+-      const char *slash = strrchr(res.auto_uri.c_str(), '/');
+-      if (slash)
+-        filename = slash + 1;
+-      else
+-        filename = std::string(software) + "-update-" + version;
+-      path = epee::string_tools::get_current_module_folder();
+-      path /= filename;
+-    }
+-    else
+-    {
+-      path = req.path;
+-    }
+-
+-    crypto::hash file_hash;
+-    if (!tools::sha256sum(path.string(), file_hash) || (hash != epee::string_tools::pod_to_hex(file_hash)))
+-    {
+-      MDEBUG("We don't have that file already, downloading");
+-      if (!tools::download(path.string(), res.auto_uri))
+-      {
+-        MERROR("Failed to download " << res.auto_uri);
+-        return true;
+-      }
+-      if (!tools::sha256sum(path.string(), file_hash))
+-      {
+-        MERROR("Failed to hash " << path);
+-        return true;
+-      }
+-      if (hash != epee::string_tools::pod_to_hex(file_hash))
+-      {
+-        MERROR("Download from " << res.auto_uri << " does not match the expected hash");
+-        return true;
+-      }
+-      MINFO("New version downloaded to " << path);
+-    }
+-    else
+-    {
+-      MDEBUG("We already have " << path << " with expected hash");
+-    }
+-    res.path = path.string();
+-
+-    if (req.command == "download")
+-    {
+-      res.status = CORE_RPC_STATUS_OK;
+-      return true;
+-    }
+-
+-    res.status = "'update' not implemented yet";
++    res.version.clear();
++    res.user_uri.clear();
++    res.auto_uri.clear();
++    res.hash.clear();
++    res.path.clear();
++    res.status = "update checking is not supported by MeepCoin: no signed MeepCoin update authority "
++                 "or release process exists, and the inherited Monero update channel was removed";
+     return true;
+   }
+   //------------------------------------------------------------------------------------------------------------------------------

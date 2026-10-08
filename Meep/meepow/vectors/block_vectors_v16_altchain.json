@@ -1,0 +1,58 @@
+{
+  "case": "alternate-chain siblings",
+  "description": "Two distinct nonces satisfying the same block template. Both are valid blocks with the same parent at the same height. The first submitted becomes the tip; the second is validated via get_altblock_longhash.",
+  "height": 2240,
+  "difficulty": 500,
+  "target_le_hex": "4f8d976e1283c0caa145b6f3fdd478e9263108ac1c5a643bdf4f8d976e128300",
+  "seed_height": 2048,
+  "epoch_key": "f66b60ce6a36fadf91424164c663643432c049f2af10a8141fe32f07a41d305f",
+  "delayed_seed_input": "f66b60ce6a36fadf91424164c663643432c049f2af10a8141fe32f07a41d305f",
+  "block_hashing_blob": "1010c7e4aad306803a0dd269dda1187507f3e88bd3f16c3d17b7f4068219b4c57748486ceea41e000000003eb712a607102c5e613a6c16480a21386544d2b12172548f8b631583aca0eae301",
+  "blob_nonce_zeroed": "1010c7e4aad306803a0dd269dda1187507f3e88bd3f16c3d17b7f4068219b4c57748486ceea41e000000003eb712a607102c5e613a6c16480a21386544d2b12172548f8b631583aca0eae301",
+  "nonce_offset_bytes_hashing_blob": 39,
+  "nonce_offset_bytes_full_blob": 39,
+  "nonce_byte_order": "little-endian uint32",
+  "siblings": [
+    {
+      "nonce": 270,
+      "pow": "f3bf4101f1c054c9d20fa1691042468838c3021ee17a6bf571f414683f5a4500",
+      "submit_status": "OK",
+      "submit_error": null,
+      "full_block_blob": "1010c7e4aad306803a0dd269dda1187507f3e88bd3f16c3d17b7f4068219b4c57748486ceea41e0e01000002ca1101ffc011019780ae93d4220302c82110ff75d72398ae664ba305dc549902db1211e4c07f3a21128691d7c7cef52b01863063307573e11f4443a2cb22be44e6bd6a9c4451b65a4ac70a00c989dc88d6020800000000000000000000"
+    },
+    {
+      "nonce": 442,
+      "pow": "4d8bafa6ea5290a0693523a713775c35f37b7d23288c6168c908e5b5ba551400",
+      "submit_status": "OK",
+      "submit_error": null,
+      "full_block_blob": "1010c7e4aad306803a0dd269dda1187507f3e88bd3f16c3d17b7f4068219b4c57748486ceea41eba01000002ca1101ffc011019780ae93d4220302c82110ff75d72398ae664ba305dc549902db1211e4c07f3a21128691d7c7cef52b01863063307573e11f4443a2cb22be44e6bd6a9c4451b65a4ac70a00c989dc88d6020800000000000000000000"
+    }
+  ],
+  "invalid_siblings": [
+    {
+      "nonce": 0,
+      "pow": "90f9fb9eaa6909909231fa6fcbbe926b1642a17c7b13443f8a185227dd08b3d3",
+      "meets_target": false,
+      "submit_status": null,
+      "submit_error": "Block not accepted",
+      "rejected": true
+    },
+    {
+      "nonce": 1,
+      "pow": "95e52b38a2bff4bf8ea37ebd46deee800a922069d3fc8411acd080764bbb432e",
+      "meets_target": false,
+      "submit_status": null,
+      "submit_error": "Block not accepted",
+      "rejected": true
+    },
+    {
+      "nonce": 2,
+      "pow": "1bef54edccf4cf0b8293bb8d2dd9238e36116439099d0cd206f5e558a468f2c9",
+      "meets_target": false,
+      "submit_status": null,
+      "submit_error": "Block not accepted",
+      "rejected": true
+    }
+  ],
+  "expected_result": "PASS (both siblings satisfy the target and are valid at this height; every invalid sibling is rejected)"
+}
