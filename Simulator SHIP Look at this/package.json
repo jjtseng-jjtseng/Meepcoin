@@ -44,7 +44,9 @@
       "LICENSE",
       "NOTICE.txt",
       "!**/*.md",
-      "!**/README*"
+      "!**/README*",
+      "!**/.*",
+      "!**/.*/**/*"
     ],
     "asar": true,
     "asarUnpack": [
