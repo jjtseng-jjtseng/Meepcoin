@@ -6,6 +6,7 @@ parser.add_argument('--binaries',type=Path,required=True);parser.add_argument('-
 parser.add_argument('--library-dir',type=Path)
 parser.add_argument('--adversarial',action='store_true')
 parser.add_argument('--crash-restore',action='store_true')
+parser.add_argument('--seed-restore',action='store_true',help='Recover only the freshly generated disposable recipient wallet from its mnemonic in memory')
 args=parser.parse_args()
 runroot=args.run_dir.resolve();runroot.mkdir(mode=0o700,parents=True,exist_ok=False)
 bins=args.binaries.resolve(strict=True)
@@ -183,12 +184,26 @@ try:
   for port,expected in [(wallet_a_port,a1['balance']),(wallet_b_port,b1['balance'])]:
    rpc(port,'rescan_blockchain');rpc(port,'refresh');assert rpc(port,'get_balance')['balance']==expected
   recovery={'ownedDaemonSigkillRestart':True,'coldDatabaseCopyRestore':True,'canonicalHash':crash_top['hash'],'walletRescansExact':True}
+ seed_recovery=None
+ if args.seed_restore:
+  # Only this run's disposable recipient wallet. Never write or report its
+  # mnemonic, request an existing user wallet, or pass a seed on a command line.
+  mnemonic=rpc(wallet_b_port,'query_key',{'key_type':'mnemonic'})['key']
+  rpc(wallet_b_port,'store');rpc(wallet_b_port,'close_wallet')
+  restored_wallet=rpc(wallet_b_port,'restore_deterministic_wallet',{
+   'filename':'disposable-seed-restored','password':password,'seed':mnemonic,'restore_height':0})
+  del mnemonic
+  assert restored_wallet['address']==b,'Recovered recipient address differs'
+  rpc(wallet_b_port,'refresh')
+  assert rpc(wallet_b_port,'get_balance')['balance']==b1['balance'],'Recovered balance differs'
+  rpc(wallet_b_port,'store')
+  seed_recovery={'freshDisposableMnemonicRestore':True,'exactAddress':True,'exactBalance':True,'seedExported':False}
  result={'status':'PRIVATE_NATIVE_CURRENCY_PASS','coinbaseCredit':coinbase_credit,
   'height':h1,'amountAtomic':tx['amount'],'feeAtomic':tx['fee'],'txHash':tx['tx_hash'],
   'confirmations':incoming['confirmations'],'senderBefore':a0['balance'],'senderAfter':a1['balance'],
   'recipientBefore':b0['balance'],'recipientAfter':b1['balance'],'confirmationRewards':rewards,
   'exactSenderAccounting':True,'exactRecipientAccounting':True,'walletReopen':True,'recipientRescan':True,'daemonRestartPreservedChainAndBalances':True,
-  'adversarialCases':adversarial,'duplicateRelay':duplicate,'crashRestore':recovery,
+  'adversarialCases':adversarial,'duplicateRelay':duplicate,'crashRestore':recovery,'seedRecovery':seed_recovery,
   'limits':['Private fixed difficulty 20','No fresh-genesis or natural-difficulty launch policy claim','Fresh disposable wallet keys remain in the private run directory; no keys exported']}
  (runroot/'RESULT.json').open('x').write(json.dumps(result,indent=2)+'\n');print(json.dumps(result),flush=True)
 finally:

@@ -43,6 +43,7 @@
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/member.hpp>
 #include <atomic>
+#include <deque>
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
@@ -178,6 +179,9 @@ namespace cryptonote
     // Local resource policy, independent of block validity and fork-choice arithmetic.
     // Smaller limits are useful for embedded operators and real-database regression tests.
     void set_alt_block_limits(size_t blocks, uint64_t bytes);
+    // Local duplicate suppression only; never retain full attacker-supplied blocks.
+    void set_invalid_block_limit(size_t blocks);
+    size_t get_invalid_block_count() const;
 
     /**
      * @brief get blocks and transactions from blocks based on start height and count
@@ -1219,8 +1223,10 @@ namespace cryptonote
     boost::thread_group m_async_pool;
     std::unique_ptr<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> m_async_work_idle;
 
-    // some invalid blocks
-    blocks_ext_by_hash m_invalid_blocks;     // crypto::hash -> block_extended_info
+    // Bounded FIFO of invalid block identities. No transaction/block bodies.
+    std::unordered_set<crypto::hash> m_invalid_blocks;
+    std::deque<crypto::hash> m_invalid_block_order;
+    size_t m_invalid_blocks_limit = 4096;
 
 
     checkpoints m_checkpoints;

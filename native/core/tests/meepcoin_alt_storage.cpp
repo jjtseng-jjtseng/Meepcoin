@@ -13,6 +13,13 @@
 using namespace cryptonote;
 namespace {
 void require(bool ok, const char* message) { if (!ok) throw std::runtime_error(message); }
+struct FaultLMDB: BlockchainLMDB {
+  bool fail_insert = false;
+  void add_alt_block(const crypto::hash& id, const alt_block_data_t& data, const blobdata_ref& blob) override {
+    if (fail_insert) throw DB_ERROR("deliberate insertion fault after planned eviction");
+    BlockchainLMDB::add_alt_block(id, data, blob);
+  }
+};
 struct Node {
   tx_memory_pool pool;
   Blockchain chain;
@@ -21,12 +28,13 @@ struct Node {
   Node(const std::string& path, size_t count, uint64_t bytes): pool(chain), chain(pool) {
     const std::pair<uint8_t, uint64_t> schedule[] = {{16, 0}, {0, 0}};
     const test_options options{schedule, 0};
-    auto owned = std::unique_ptr<BlockchainLMDB>(new BlockchainLMDB);
+    auto owned = std::unique_ptr<BlockchainLMDB>(new FaultLMDB);
     owned->open(path);
     db = owned.release(); // Blockchain owns the open database after init.
     require(chain.init(db, FAKECHAIN, true, &options, 20), "chain init");
     require(pool.init(), "pool init");
     chain.set_alt_block_limits(count, bytes);
+    chain.set_invalid_block_limit(4);
     account.generate();
   }
   ~Node() { pool.deinit(); }
@@ -162,6 +170,94 @@ void winning_boundary_case(const std::string& root) {
   require(n.db->get_alt_block_count() <= 8, "retained disconnected branch exceeded ceiling");
   std::cout << "{\"case\":\"winning-candidate-at-protected-capacity\",\"higherWorkReorg\":true}" << std::endl;
 }
+block excessive_reward(Node& n, block b) {
+  ++b.miner_tx.vout.front().amount;
+  b.miner_tx.invalidate_hashes();
+  for (b.nonce = 0; b.nonce < 10000; ++b.nonce) {
+    b.invalidate_hashes();
+    crypto::hash hash;
+    require(get_block_longhash(&n.chain, b, hash, get_block_height(b), nullptr), "invalid reward PoW");
+    if (check_hash(hash, difficulty_type(20))) return b;
+  }
+  throw std::runtime_error("invalid reward nonce bound");
+}
+void failed_winner_case(const std::string& root, bool bad_ancestor) {
+  Node n(root + (bad_ancestor ? "/bad-ancestor" : "/bad-winner"), 8, 1024 * 1024);
+  fill_main(n);
+  const auto tip = n.db->top_block_hash();
+  const auto height = n.db->height();
+  const auto work = n.db->get_block_cumulative_difficulty(height - 1);
+  auto parent = n.db->get_block_hash_from_height(0);
+  for (unsigned i = 0; i < 8; ++i) {
+    auto b = make(n, &parent, 1);
+    if (bad_ancestor && i == 4) b = excessive_reward(n, b);
+    accepted(submit(n, b)); parent = get_block_hash(b);
+  }
+  auto winner = make(n, &parent, 1);
+  if (!bad_ancestor) winner = excessive_reward(n, winner);
+  const auto v = submit(n, winner);
+  require(!v.result && v.context.m_verifivation_failed, "invalid reward fork accepted");
+  require(n.db->top_block_hash() == tip && n.db->height() == height &&
+    n.db->get_block_cumulative_difficulty(height - 1) == work, "failed reorg did not restore canonical state");
+  require(n.db->get_alt_block_count() == (bad_ancestor ? 4 : 8), "failed reorg removed wrong retained ancestors");
+  if (!bad_ancestor) {
+    int where = -1;
+    require(n.chain.have_block(get_block_hash(winner), &where) && where == HAVE_BLOCK_INVALID,
+      "invalid winning reward was not remembered");
+    const auto replay = submit(n, winner);
+    require(!replay.result && replay.context.m_already_exists && !replay.context.m_added_to_main_chain,
+      "invalid winner replay repeated validation");
+    require(n.db->top_block_hash() == tip && n.db->get_alt_block_count() == 8,
+      "duplicate invalid winner changed chain state");
+    const auto valid_winner = make(n, &parent, 2);
+    accepted(submit(n, valid_winner));
+    require(n.db->top_block_hash() == get_block_hash(valid_winner), "invalid identity poisoned a valid sibling");
+  }
+  std::cout << "{\"case\":\"" << (bad_ancestor ? "invalid-intermediate-reorg" : "invalid-uncached-winner-reorg")
+    << "\",\"canonicalRestored\":true}" << std::endl;
+}
+void invalid_identity_case(const std::string& root) {
+  Node n(root + "/invalid-identities", 8, 1024 * 1024);
+  fill_main(n);
+  const auto tip = n.db->top_block_hash();
+  crypto::hash first{}, last{};
+  for (unsigned i = 0; i < 5; ++i) {
+    const auto bad = excessive_reward(n, make(n, nullptr, i + 1));
+    const auto v = submit(n, bad);
+    require(!v.result && v.context.m_verifivation_failed, "bad reward accepted");
+    if (i == 0) first = get_block_hash(bad);
+    last = get_block_hash(bad);
+    require(n.chain.get_invalid_block_count() <= 4 && n.db->top_block_hash() == tip,
+      "invalid identities exceeded bound or changed canonical chain");
+  }
+  int where = -1;
+  require(n.chain.get_invalid_block_count() == 4 && !n.chain.have_block(first) &&
+    n.chain.have_block(last, &where) && where == HAVE_BLOCK_INVALID, "invalid FIFO eviction failed");
+  n.chain.flush_invalid_blocks();
+  require(n.chain.get_invalid_block_count() == 0 && !n.chain.have_block(last), "invalid cache flush incomplete");
+  std::cout << "{\"case\":\"bounded-invalid-identities\",\"maxIdentities\":4,\"fifoEvicted\":true,\"flushCleared\":true}" << std::endl;
+}
+void atomic_eviction_case(const std::string& root) {
+  Node n(root + "/eviction-fault", 2, 1024 * 1024);
+  fill_main(n);
+  auto fork = n.db->get_block_hash_from_height(1);
+  const auto a = make(n, &fork, 1), b = make(n, &fork, 2);
+  accepted(submit(n, a)); accepted(submit(n, b));
+  auto parent = get_block_hash(a);
+  const auto child = make(n, &parent, 3);
+  const auto before = stored_bytes(n);
+  const auto tip = n.db->top_block_hash();
+  static_cast<FaultLMDB*>(n.db)->fail_insert = true;
+  const auto v = submit(n, child);
+  static_cast<FaultLMDB*>(n.db)->fail_insert = false;
+  require(!v.result && v.context.m_verifivation_failed, "insertion fault accepted");
+  require(n.db->top_block_hash() == tip && stored_bytes(n) == before && n.db->get_alt_block_count() == 2 &&
+    n.db->get_alt_block(get_block_hash(a), nullptr, nullptr) && n.db->get_alt_block(get_block_hash(b), nullptr, nullptr),
+    "failed insertion committed partial eviction");
+  accepted(submit(n, child));
+  require(n.db->get_alt_block_count() == 2 && n.db->get_alt_block(parent, nullptr, nullptr), "retry lost protected parent");
+  std::cout << "{\"case\":\"eviction-insertion-exception\",\"transactionAborted\":true,\"sameBytesRetry\":true}" << std::endl;
+}
 }
 int main(int argc, char** argv) {
   try {
@@ -169,6 +265,8 @@ int main(int argc, char** argv) {
     require(!boost::filesystem::exists(argv[1]), "output exists");
     boost::filesystem::create_directories(argv[1]);
     count_case(argv[1]); byte_case(argv[1]); no_room_case(argv[1]); winning_boundary_case(argv[1]);
+    failed_winner_case(argv[1], false); failed_winner_case(argv[1], true); atomic_eviction_case(argv[1]);
+    invalid_identity_case(argv[1]);
     std::cout << "{\"status\":\"REAL_LMDB_ALT_STORAGE_PASS\",\"mockDatabase\":false,\"mockPow\":false}" << std::endl;
     return 0;
   } catch (const std::exception& e) { std::cerr << "ALT STORAGE FAIL: " << e.what() << std::endl; return 1; }

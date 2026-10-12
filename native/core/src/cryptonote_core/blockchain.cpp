@@ -1155,6 +1155,12 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
 
   // if empty alt chain passed (not sure how that could happen), return false
   CHECK_AND_ASSERT_MES(alt_chain.size(), false, "switch_to_alternative_blockchain: empty chain passed");
+  // Only the final, winning candidate bypasses alternative storage. Every
+  // retained ancestor must still exist; a missing ancestor is an invariant error.
+  const auto uncached_winner = cryptonote::get_block_hash(alt_chain.back().bl);
+  const auto remove_cached = [&](const crypto::hash& id) {
+    if (id != uncached_winner) m_db->remove_alt_block(id);
+  };
 
   // verify that main chain has front of alt chain's parent block
   if (!m_db->block_exists(alt_chain.front().bl.prev_id))
@@ -1196,14 +1202,14 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
       rollback_blockchain_switching(disconnected_chain, split_height);
 
       const crypto::hash blkid = cryptonote::get_block_hash(bei.bl);
-      if (m_db->get_alt_block(blkid, nullptr, nullptr)) m_db->remove_alt_block(blkid);
+      remove_cached(blkid);
       alt_ch_iter++;
 
       for(auto alt_ch_to_orph_iter = alt_ch_iter; alt_ch_to_orph_iter != alt_chain.end(); )
       {
         const auto &bei = *alt_ch_to_orph_iter++;
         const crypto::hash blkid = cryptonote::get_block_hash(bei.bl);
-        if (m_db->get_alt_block(blkid, nullptr, nullptr)) m_db->remove_alt_block(blkid);
+        remove_cached(blkid);
       }
       return false;
     }
@@ -1215,7 +1221,7 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
   for (const auto &bei: alt_chain)
   {
     const auto id = cryptonote::get_block_hash(bei.bl);
-    if (m_db->get_alt_block(id, nullptr, nullptr)) m_db->remove_alt_block(id);
+    remove_cached(id);
   }
 
   // if we're to keep the disconnected blocks, add them as alternates
@@ -2135,6 +2141,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     {
       MERROR_VER("Block with id: " << epee::string_tools::pod_to_hex(id) << " (as alternative) has incorrect miner transaction.");
       bvc.m_verifivation_failed = true;
+      add_block_as_invalid(b, id);
       return false;
     }
 
@@ -2946,8 +2953,7 @@ bool Blockchain::find_blockchain_supplement(const uint64_t req_start_block, cons
 bool Blockchain::add_block_as_invalid(const block& bl, const crypto::hash& h)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
-  block_extended_info bei = AUTO_VAL_INIT(bei);
-  bei.bl = bl;
+  block_extended_info bei{}; // The body is deliberately not copied or retained.
   return add_block_as_invalid(bei, h);
 }
 //------------------------------------------------------------------
@@ -2955,10 +2961,31 @@ bool Blockchain::add_block_as_invalid(const block_extended_info& bei, const cryp
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
-  auto i_res = m_invalid_blocks.insert(std::map<crypto::hash, block_extended_info>::value_type(h, bei));
-  CHECK_AND_ASSERT_MES(i_res.second, false, "at insertion invalid by tx returned status existed");
-  MINFO("BLOCK ADDED AS INVALID: " << h << std::endl << ", prev_id=" << bei.bl.prev_id << ", m_invalid_blocks count=" << m_invalid_blocks.size());
+  if (m_invalid_blocks.count(h)) return true;
+  m_invalid_block_order.push_back(h);
+  try { m_invalid_blocks.insert(h); }
+  catch (...) { m_invalid_block_order.pop_back(); throw; }
+  while (m_invalid_blocks.size() > m_invalid_blocks_limit)
+  {
+    m_invalid_blocks.erase(m_invalid_block_order.front());
+    m_invalid_block_order.pop_front();
+  }
+  MINFO("BLOCK ADDED AS INVALID: " << h << ", cached identities=" << m_invalid_blocks.size());
   return true;
+}
+//------------------------------------------------------------------
+void Blockchain::set_invalid_block_limit(size_t blocks)
+{
+  CRITICAL_REGION_LOCAL(m_blockchain_lock);
+  if (!blocks || blocks > 4096 || !m_invalid_blocks.empty())
+    throw std::invalid_argument("invalid-block limit requires an empty cache and 1..4096 identities");
+  m_invalid_blocks_limit = blocks;
+}
+//------------------------------------------------------------------
+size_t Blockchain::get_invalid_block_count() const
+{
+  CRITICAL_REGION_LOCAL(m_blockchain_lock);
+  return m_invalid_blocks.size();
 }
 //------------------------------------------------------------------
 void Blockchain::flush_invalid_blocks()
@@ -2966,6 +2993,7 @@ void Blockchain::flush_invalid_blocks()
   LOG_PRINT_L3("Blockchain::" << __func__);
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
   m_invalid_blocks.clear();
+  m_invalid_block_order.clear();
 }
 //------------------------------------------------------------------
 bool Blockchain::have_block_unlocked(const crypto::hash& id, int *where) const
@@ -4394,6 +4422,7 @@ leave:
   {
     MERROR_VER("Block with id: " << id << " failed to pass prevalidation");
     bvc.m_verifivation_failed = true;
+    add_block_as_invalid(bl, id);
     goto leave;
   }
 
@@ -4623,6 +4652,10 @@ leave:
   {
     MERROR_VER("Block with id: " << id << " has incorrect miner transaction");
     bvc.m_verifivation_failed = true;
+    // All referenced transactions and this exact parent chain are available.
+    // A wrong coinbase remains wrong for this block identity. Temporary future
+    // timestamps, missing transactions and local storage faults never enter here.
+    add_block_as_invalid(bl, id);
     return_txs_to_pool();
     return false;
   }
@@ -4930,6 +4963,12 @@ bool Blockchain::add_new_block(const block& bl, block_verification_context& bvc,
   catch (const std::exception &e)
   {
     LOG_ERROR("Exception at [add_new_block], what=" << e.what());
+    // Incoming cleanup must abort a batch after an exceptional DB mutation,
+    // including partially executed alternate-cache eviction.
+    m_batch_success = false;
+    m_timestamps_and_difficulties_height = 0;
+    m_reset_timestamps_and_difficulties_height = true;
+    invalidate_block_template_cache();
     bvc.m_verifivation_failed = true;
     return false;
   }

@@ -42,12 +42,12 @@ def main():
             raise RuntimeError(label + ' failed; inspect preserved log')
     inputs = [source / 'third_party/blake3' / (name + '.c')
               for name in ['blake3', 'blake3_dispatch', 'blake3_portable']]
-    inputs += [source / path for path in ['src/v2_api.cpp', 'src/v2_capi.cpp', 'tests/kat_v2_api.cpp']]
+    inputs += [source / path for path in ['src/v2_api.cpp', 'src/v2_capi.cpp', 'tests/kat_v2_api.cpp', 'tests/target_math.cpp']]
     identity_paths = sorted(set(inputs + list((source/'src').glob('*.hpp')) +
         list((source/'include/meepow').glob('*')) + list((source/'third_party/blake3').glob('*.h')) +
         [source/'vectors/vectors_v2.txt']))
     manifest = {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
-                for path in identity_paths if path.is_file()}
+                for path in identity_paths}
     (output/'INPUTS.json').write_text(json.dumps(dict(host=platform.platform(),
         machine=platform.machine(), sources=manifest), indent=2)+'\n')
     includes = ['-I'+str(source/path) for path in ['include', 'src', 'third_party/blake3']]
@@ -63,11 +63,15 @@ def main():
             objects.append(str(obj))
         binary = output/'meepow-kat-v2-api'
         run('link', [args.cxx, '-O2', '-DNDEBUG', '-std=c++17', '-pthread', *includes,
-            *map(str, inputs[3:]), *objects, '-o', str(binary)])
+            *map(str, inputs[3:6]), *objects, '-o', str(binary)])
         run('kat', [str(binary), str(source/'vectors/vectors_v2.txt')])
+        math_binary = output/'meepow-target-math'
+        run('target-link', [args.cxx, '-O2', '-std=c++17', *includes,
+            str(inputs[6]), '-o', str(math_binary)])
+        run('target-math', [str(math_binary)])
         result = dict(status='PORTABLE_NATIVE_V2_KAT_PASS', host=platform.platform(),
             machine=platform.machine(), binarySha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
-            vectors=20, receipts=receipts, publicExposure=False)
+            vectors=20, targetQuotientChecks=10193, receipts=receipts, publicExposure=False)
         (output/'RESULT.json').write_text(json.dumps(result, indent=2)+'\n')
         print(json.dumps(result))
     finally:

@@ -1,5 +1,5 @@
 """Real-browser KAT and resource observation. No installed user profiles or network mining."""
-import argparse,hashlib,http.server,json,os,resource,signal,subprocess,threading,time,uuid
+import argparse,hashlib,http.server,json,os,platform,resource,signal,subprocess,threading,time,uuid
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--product',type=Path,required=True);p.add_argument('--run-dir',type=Path,required=True)
 p.add_argument('--browser',action='append',required=True);p.add_argument('--max-rss-mib',type=int,default=1024);a=p.parse_args()
@@ -43,6 +43,11 @@ def limits():
  # Browsers reserve large virtual arenas; physical usage is bounded by the owned-group RSS watchdog.
  os.nice(10);resource.setrlimit(resource.RLIMIT_CORE,(0,0));resource.setrlimit(resource.RLIMIT_FSIZE,(128*1024**2,128*1024**2))
 def group(pid):
+ if platform.system()=='Darwin':
+  # ps reports KiB RSS on macOS. Filter the newly created process group; never
+  # address the user's existing browser instance or profile.
+  rows=subprocess.check_output(['ps','-axo','pid=,pgid=,rss='],text=True)
+  return [(int(p),int(rss)*1024) for p,pgid,rss in (line.split() for line in rows.splitlines()) if int(pgid)==pid]
  values=[]
  for path in Path('/proc').iterdir():
   if not path.name.isdigit():continue
