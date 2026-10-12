@@ -1374,7 +1374,8 @@ namespace cryptonote
      *
      * @return true if the block was added successfully, otherwise false
      */
-    bool handle_block_to_main_chain(const block& bl, block_verification_context& bvc);
+    bool handle_block_to_main_chain(const block& bl, block_verification_context& bvc,
+      bool known_canonical_replay = false);
 
     /**
      * @brief validate and add a new block to the end of the blockchain
@@ -1391,7 +1392,8 @@ namespace cryptonote
      * @return true if the block was added successfully, otherwise false
      */
     bool handle_block_to_main_chain(const block& bl, const crypto::hash& id,
-      block_verification_context& bvc, pool_supplement& extra_block_txs);
+      block_verification_context& bvc, pool_supplement& extra_block_txs,
+      bool known_canonical_replay = false);
 
     /**
      * @brief validate and add a new block to an alternate blockchain
@@ -1408,7 +1410,8 @@ namespace cryptonote
      * @return true if the block was added successfully, otherwise false
      */
     bool handle_alternative_block(const block& b, const crypto::hash& id,
-      block_verification_context& bvc, pool_supplement& extra_block_txs);
+      block_verification_context& bvc, pool_supplement& extra_block_txs,
+      bool known_canonical_replay = false);
 
     bool make_alt_block_room(const blobdata& blob, difficulty_type work,
       const std::list<block_extended_info>& ancestors);

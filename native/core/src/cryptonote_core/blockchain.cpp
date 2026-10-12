@@ -1129,7 +1129,7 @@ bool Blockchain::rollback_blockchain_switching(std::list<block>& original_chain,
   for (auto& bl : original_chain)
   {
     block_verification_context bvc = {};
-    bool r = handle_block_to_main_chain(bl, bvc);
+    bool r = handle_block_to_main_chain(bl, bvc, true);
     CHECK_AND_ASSERT_MES(r && bvc.m_added_to_main_chain, false, "PANIC! failed to add (again) block while chain switching during the rollback!");
   }
 
@@ -1233,7 +1233,7 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
     {
       block_verification_context bvc = {};
       pool_supplement ps{};
-      bool r = handle_alternative_block(old_ch_ent, get_block_hash(old_ch_ent), bvc, ps);
+      bool r = handle_alternative_block(old_ch_ent, get_block_hash(old_ch_ent), bvc, ps, true);
       if(!r)
       {
         MERROR("Failed to push ex-main chain blocks to alternative chain ");
@@ -2027,7 +2027,7 @@ bool Blockchain::make_alt_block_room(const blobdata& blob, difficulty_type work,
 }
 //------------------------------------------------------------------
 bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id,
-  block_verification_context& bvc, pool_supplement& extra_block_txs)
+  block_verification_context& bvc, pool_supplement& extra_block_txs, bool known_canonical_replay)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
@@ -2141,7 +2141,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     {
       MERROR_VER("Block with id: " << epee::string_tools::pod_to_hex(id) << " (as alternative) has incorrect miner transaction.");
       bvc.m_verifivation_failed = true;
-      add_block_as_invalid(b, id);
+      if (!known_canonical_replay) add_block_as_invalid(b, id);
       return false;
     }
 
@@ -3034,12 +3034,13 @@ bool Blockchain::have_block(const crypto::hash& id, int *where) const
   return have_block_unlocked(id, where);
 }
 //------------------------------------------------------------------
-bool Blockchain::handle_block_to_main_chain(const block& bl, block_verification_context& bvc)
+bool Blockchain::handle_block_to_main_chain(const block& bl, block_verification_context& bvc,
+  bool known_canonical_replay)
 {
     LOG_PRINT_L3("Blockchain::" << __func__);
     crypto::hash id = get_block_hash(bl);
     pool_supplement ps{};
-    return handle_block_to_main_chain(bl, id, bvc, ps);
+    return handle_block_to_main_chain(bl, id, bvc, ps, known_canonical_replay);
 }
 //------------------------------------------------------------------
 size_t Blockchain::get_total_transactions() const
@@ -4272,7 +4273,7 @@ bool Blockchain::flush_txes_from_pool(const std::vector<crypto::hash> &txids)
 //      transaction mem_pool, then pass the block and transactions to
 //      m_db->add_block()
 bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash& id,
-  block_verification_context& bvc, pool_supplement& extra_block_txs)
+  block_verification_context& bvc, pool_supplement& extra_block_txs, bool known_canonical_replay)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
 
@@ -4422,7 +4423,7 @@ leave:
   {
     MERROR_VER("Block with id: " << id << " failed to pass prevalidation");
     bvc.m_verifivation_failed = true;
-    add_block_as_invalid(bl, id);
+    if (!fast_check && !known_canonical_replay) add_block_as_invalid(bl, id);
     goto leave;
   }
 
@@ -4620,7 +4621,7 @@ leave:
         MERROR_VER("Block with id: " << id  << " has at least one transaction (id: " << tx_id << ") with wrong inputs.");
 
         //TODO: why is this done?  make sure that keeping invalid blocks makes sense.
-        add_block_as_invalid(bl, id);
+        if (!known_canonical_replay) add_block_as_invalid(bl, id);
         MERROR_VER("Block with id " << id << " added as invalid because of wrong inputs in transactions");
         bvc.m_verifivation_failed = true;
         return_txs_to_pool();
@@ -4652,10 +4653,12 @@ leave:
   {
     MERROR_VER("Block with id: " << id << " has incorrect miner transaction");
     bvc.m_verifivation_failed = true;
-    // All referenced transactions and this exact parent chain are available.
-    // A wrong coinbase remains wrong for this block identity. Temporary future
-    // timestamps, missing transactions and local storage faults never enter here.
-    add_block_as_invalid(bl, id);
+    // Retain this verdict only for fully checked coinbase-only candidates.
+    // With regular/pruned transactions, reward calculation can depend on local
+    // pool metadata. A failure replaying our former canonical chain is a local
+    // recovery failure, not evidence for remembering its identities as invalid.
+    if (!fast_check && !known_canonical_replay && bl.tx_hashes.empty() && n_pruned == 0)
+      add_block_as_invalid(bl, id);
     return_txs_to_pool();
     return false;
   }

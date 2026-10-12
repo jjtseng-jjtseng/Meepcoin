@@ -19,15 +19,17 @@
       "sha256": "eab80cb88f8fda1e65f5e8d0420c9809bdb320b03fd34976ab7161b6e703b910"
     }
   ],
-  "sourceTested": "ca33bc6a90e3a07fb8864245188794f4b8386ab6",
+  "sourceTested": "9fee7dfc318593f87c63dc3ffd6310850599f358",
   "artifacts": {
     "meepow/wasm/meepow.mjs": "5a61038d0d40aaaf4f33d779dfa9e0b4ee7e68817eabdf8de57465711ef49e31",
-    "meepow/wasm/meepow.wasm": "a039b57ed7d874792eced9044054764c6c3d10c316581efe64721ff52b3988a7"
+    "meepow/wasm/meepow.wasm": "84480d148e3c7559d8b4ba90b3a4f8d9acf7ec2180d50d713b46eac5f28bd35d"
   },
   "validation": {
     "v2Vectors": 20,
     "legacyVectors": 132,
-    "exactPreviousArtifactMatch": true
+    "wasmTargetQuotients": 10191,
+    "exactPreviousArtifactMatch": false,
+    "exactRepeatedBuildMatch": true
   },
   "runtimeResourceNotes": "32GiB virtual ceiling permits V8 guard reservation; 768MiB RSS watchdog, 256MiB old space and 512MiB per-Wasm maximum; 180 second deadline"
 }
