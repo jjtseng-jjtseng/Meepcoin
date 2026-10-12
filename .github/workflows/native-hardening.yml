@@ -21,7 +21,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Ephemeral runner dependencies
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y cmake g++ pkg-config libboost-all-dev libssl-dev libunbound-dev
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y cmake g++ pkg-config libboost-all-dev libssl-dev libunbound-dev libzmq3-dev libsodium-dev
       - name: Build node, wallets and real LMDB storage tests
         run: python3 scripts/private/build-native.py "$RUNNER_TEMP/meep-native" --hardening-tests
       - name: Currency, adversarial amounts, duplicate relay and crash restore
@@ -40,5 +40,5 @@ jobs:
         with:
           persist-credentials: false
       - run: cmake -S meepow -B pow-build -DCMAKE_BUILD_TYPE=Release -DMEEPOW_BLAKE3_PORTABLE=ON
-      - run: cmake --build pow-build --config Release --target meepow-kat-v2-api --parallel 2
-      - run: ctest --test-dir pow-build -C Release -R '^kat_v2_api$' --output-on-failure
+      - run: cmake --build pow-build --config Release --target meepow-kat-v2-api meepow-target-math --parallel 2
+      - run: ctest --test-dir pow-build -C Release -R '^(kat_v2_api|target_math)$' --output-on-failure

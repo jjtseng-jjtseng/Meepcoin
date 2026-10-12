@@ -52,7 +52,10 @@ def run(output,name,argv,seconds,env):
  receipt={'argv':argv,'exitCode':code,'timeout':timed_out,'seconds':time.monotonic()-started,'ownedGroupEmpty':group_empty,'interrupted':interrupted is not None}
  (output/(name+'.json')).write_text(json.dumps(receipt,indent=2)+'\n')
  if interrupted is not None:raise interrupted
- if code or timed_out or not group_empty:raise RuntimeError(name+' failed; see preserved log')
+ if code or timed_out or not group_empty:
+  print((output/(name+'.log')).read_bytes()[-32768:].decode('utf-8',errors='replace'),flush=True)
+  print(json.dumps(receipt),flush=True)
+  raise RuntimeError(name+' failed; see preserved log')
 def main():
  parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('output',type=Path)
  parser.add_argument('--prepare-only',action='store_true');parser.add_argument('--sysroot',type=Path,help='existing private dependency prefix, e.g. sysroot/usr')
@@ -67,7 +70,7 @@ def main():
  env=dict(os.environ,LC_ALL='C');opts=[]
  if a.hardening_tests:opts+=['-DMEEPCOIN_HARDENING_TESTS=ON']
  if a.testnet17_genesis_utc is not None:
-  opts=['-DMEEPCOIN_TESTNET17=ON','-DMEEPCOIN_TESTNET17_GENESIS_TIMESTAMP='+str(a.testnet17_genesis_utc)]
+  opts+=['-DMEEPCOIN_TESTNET17=ON','-DMEEPCOIN_TESTNET17_GENESIS_TIMESTAMP='+str(a.testnet17_genesis_utc)]
   (output/'CANDIDATE_NETWORK.json').write_text(json.dumps({'network':'testnet17-review','genesisUtcUnix':a.testnet17_genesis_utc,'defaultNetworkUnchanged':True,'publicExposure':False},indent=2)+'\n')
  if a.sysroot:
   prefix=a.sysroot.resolve(strict=True);triplet=subprocess.check_output(['gcc','-print-multiarch'],text=True).strip();lib=prefix/'lib'/triplet

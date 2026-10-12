@@ -1196,14 +1196,14 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
       rollback_blockchain_switching(disconnected_chain, split_height);
 
       const crypto::hash blkid = cryptonote::get_block_hash(bei.bl);
-      m_db->remove_alt_block(blkid);
+      if (m_db->get_alt_block(blkid, nullptr, nullptr)) m_db->remove_alt_block(blkid);
       alt_ch_iter++;
 
       for(auto alt_ch_to_orph_iter = alt_ch_iter; alt_ch_to_orph_iter != alt_chain.end(); )
       {
         const auto &bei = *alt_ch_to_orph_iter++;
         const crypto::hash blkid = cryptonote::get_block_hash(bei.bl);
-        m_db->remove_alt_block(blkid);
+        if (m_db->get_alt_block(blkid, nullptr, nullptr)) m_db->remove_alt_block(blkid);
       }
       return false;
     }
@@ -1213,7 +1213,10 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
   // branch, so local-cache eviction cannot remove a just-connected entry that
   // this reorganization still expects to delete below.
   for (const auto &bei: alt_chain)
-    m_db->remove_alt_block(cryptonote::get_block_hash(bei.bl));
+  {
+    const auto id = cryptonote::get_block_hash(bei.bl);
+    if (m_db->get_alt_block(id, nullptr, nullptr)) m_db->remove_alt_block(id);
+  }
 
   // if we're to keep the disconnected blocks, add them as alternates
   const size_t discarded_blocks = disconnected_chain.size();
@@ -2243,14 +2246,21 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     data.cumulative_difficulty_low = (bei.cumulative_difficulty & 0xffffffffffffffff).convert_to<uint64_t>();
     data.cumulative_difficulty_high = ((bei.cumulative_difficulty >> 64) & 0xffffffffffffffff).convert_to<uint64_t>();
     data.already_generated_coins = bei.already_generated_coins;
-    const auto alt_blob = cryptonote::block_to_blob(bei.bl);
-    if (!make_alt_block_room(alt_blob, bei.cumulative_difficulty, alt_chain))
+    // A winning candidate can be applied directly from this bounded in-memory
+    // chain. It must not need an extra cache slot beyond its retained ancestry.
+    // Failed reorganization cleanup tolerates this final, never-cached entry.
+    const bool winning = is_a_checkpoint || main_chain_cumulative_difficulty < bei.cumulative_difficulty;
+    if (!winning)
     {
-      bvc.m_altchain_limited = true;
-      MDEBUG("Alternate block deferred by local storage policy: " << id);
-      return false;
+      const auto alt_blob = cryptonote::block_to_blob(bei.bl);
+      if (!make_alt_block_room(alt_blob, bei.cumulative_difficulty, alt_chain))
+      {
+        bvc.m_altchain_limited = true;
+        MDEBUG("Alternate block deferred by local storage policy: " << id);
+        return false;
+      }
+      m_db->add_alt_block(id, data, alt_blob);
     }
-    m_db->add_alt_block(id, data, alt_blob);
     alt_chain.push_back(bei);
 
     // FIXME: is it even possible for a checkpoint to show up not on the main chain?

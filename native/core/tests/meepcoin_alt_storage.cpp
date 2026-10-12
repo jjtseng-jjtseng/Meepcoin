@@ -146,13 +146,29 @@ void no_room_case(const std::string& root) {
     "protected ancestry partially evicted");
   std::cout << "{\"case\":\"protected-ancestry-refusal\",\"partialEviction\":false}" << std::endl;
 }
+void winning_boundary_case(const std::string& root) {
+  Node n(root + "/winning-boundary", 8, 1024 * 1024);
+  fill_main(n);
+  auto parent = n.db->get_block_hash_from_height(0);
+  for (unsigned i = 0; i < 8; ++i) {
+    const auto b = make(n, &parent, 1); accepted(submit(n, b)); parent = get_block_hash(b);
+  }
+  require(n.db->get_alt_block_count() == 8, "protected boundary not full");
+  const auto winning = make(n, &parent, 1);
+  const auto v = submit(n, winning);
+  accepted(v);
+  require(v.context.m_added_to_main_chain && n.db->top_block_hash() == get_block_hash(winning),
+    "winning candidate wrongly required an extra storage slot");
+  require(n.db->get_alt_block_count() <= 8, "retained disconnected branch exceeded ceiling");
+  std::cout << "{\"case\":\"winning-candidate-at-protected-capacity\",\"higherWorkReorg\":true}" << std::endl;
+}
 }
 int main(int argc, char** argv) {
   try {
     require(argc == 2, "usage: meepcoin-alt-storage-test NEW_DIRECTORY");
     require(!boost::filesystem::exists(argv[1]), "output exists");
     boost::filesystem::create_directories(argv[1]);
-    count_case(argv[1]); byte_case(argv[1]); no_room_case(argv[1]);
+    count_case(argv[1]); byte_case(argv[1]); no_room_case(argv[1]); winning_boundary_case(argv[1]);
     std::cout << "{\"status\":\"REAL_LMDB_ALT_STORAGE_PASS\",\"mockDatabase\":false,\"mockPow\":false}" << std::endl;
     return 0;
   } catch (const std::exception& e) { std::cerr << "ALT STORAGE FAIL: " << e.what() << std::endl; return 1; }

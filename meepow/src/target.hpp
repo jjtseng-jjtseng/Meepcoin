@@ -12,19 +12,21 @@ namespace meepow {
 // target(difficulty) = floor((2^256 - 1) / difficulty), difficulty >= 1. Returns false if
 // difficulty == 0 (invalid, spec §10). Output is 32-byte little-endian.
 //
-// Uses __uint128_t for the 256/64 division. This helper is not on the per-hash consensus path;
-// it runs on gcc/clang/Emscripten (all current targets), and is differentially tested
-// native-vs-Wasm. An MSVC-portable long-division fallback is a Phase-3 item (MSVC deferred).
+// Binary long division uses only standard uint64_t operations, including on MSVC.
+// This helper runs when a target changes, outside the per-hash consensus path.
 inline bool difficulty_to_target(uint64_t difficulty, uint8_t out_target[32]) {
     if (difficulty == 0) return false;
-    // Numerator 2^256 - 1 as four u64 limbs (all ones), limb[3] most significant.
-    uint64_t num[4] = {~0ULL, ~0ULL, ~0ULL, ~0ULL};
-    uint64_t q[4];
-    unsigned __int128 rem = 0;
-    for (int i = 3; i >= 0; --i) {
-        unsigned __int128 cur = (rem << 64) | (unsigned __int128)num[i];
-        q[i] = (uint64_t)(cur / difficulty);
-        rem = cur % difficulty;
+    uint64_t q[4] = {};
+    uint64_t rem = 0;
+    for (int bit = 255; bit >= 0; --bit) {
+        // The numerator's next bit is always one. Carry represents the 65th
+        // bit of 2*rem+1; unsigned subtraction then yields its exact remainder.
+        const bool carry = (rem >> 63) != 0;
+        rem = (rem << 1) | 1;
+        if (carry || rem >= difficulty) {
+            rem -= difficulty;
+            q[bit / 64] |= uint64_t(1) << (bit % 64);
+        }
     }
     for (int i = 0; i < 4; ++i) store_u64_le(out_target + i * 8, q[i]);  // little-endian
     return true;

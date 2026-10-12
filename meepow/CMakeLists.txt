@@ -118,6 +118,10 @@ target_link_libraries(meepow-kat-v2-api PRIVATE meepow_v2)
 add_test(NAME kat_v2_api
   COMMAND meepow-kat-v2-api ${CMAKE_CURRENT_SOURCE_DIR}/vectors/vectors_v2.txt)
 
+add_executable(meepow-target-math tests/target_math.cpp)
+target_include_directories(meepow-target-math PRIVATE src)
+add_test(NAME target_math COMMAND meepow-target-math)
+
 # --- vector generator ----------------------------------------------------------------------
 add_executable(meepow-vectorgen tools/vectorgen/vectorgen.cpp)
 target_include_directories(meepow-vectorgen PRIVATE src include tests)
