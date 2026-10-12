@@ -1,0 +1,51 @@
+=== sustained CPU re-measurement ===
+start_utc=2026-07-28T20:06:34Z
+threads=16 trials=5 secs=30 nh=16000
+conditions=clean: no Monero mining, no fuzzing, no other heavy workloads
+
+########## preset=release (portable-BLAKE3) ##########
+--- sustained full-device miner, 5 x 30s ---
+trial1: RESULT threads=16 wall_s=30.004 hashes=11176 HPS=372.48
+trial2: RESULT threads=16 wall_s=30.000 hashes=11367 HPS=378.90
+trial3: RESULT threads=16 wall_s=30.002 hashes=12708 HPS=423.58
+trial4: RESULT threads=16 wall_s=30.003 hashes=13073 HPS=435.72
+trial5: RESULT threads=16 wall_s=30.003 hashes=13183 HPS=439.39
+--- throughput gate 4: full-memory vs 50% dataset budget, both sustained ---
+== v2 FROZEN — CPU adversarial THROUGHPUT confirmation ==
+dataset 32 MiB (budget denominator); scratchpad 8 MiB per in-flight hash (common)
+threads=16, hashes/config=16000, per-thread stack=112 KiB (charged to the GLOBAL budget)
+
+config                               thr    wall s        H/s useful H/s  correct  abort%  hitrate  ops/read
+(T=1 baselines skipped by request — they are not the gated comparison)
+
+FULL-memory miner                     16     36.86     434.13     434.13     100%    0.0%        -         -
+attacker 50% ds-budget (shared)       16    229.60      69.69      69.69     100%    0.0%    44.3%      14.0
+     retained 1859584 words (44.3% of D), global dataset-side 16.00 MiB (50.0% of 32 MiB)
+     whole working set: attacker 144 MiB vs full-memory 160 MiB (90.0%)
+
+SLOWDOWN vs full-memory @T=16 : 6.23x   [gate >= 2.0x]
+
+########## preset=optimized (optimized-BLAKE3+march=native) ##########
+--- sustained full-device miner, 5 x 30s ---
+trial1: RESULT threads=16 wall_s=30.000 hashes=12515 HPS=417.17
+trial2: RESULT threads=16 wall_s=30.003 hashes=12973 HPS=432.39
+trial3: RESULT threads=16 wall_s=30.000 hashes=13323 HPS=444.10
+trial4: RESULT threads=16 wall_s=30.002 hashes=13317 HPS=443.87
+trial5: RESULT threads=16 wall_s=30.002 hashes=12832 HPS=427.70
+--- throughput gate 4: full-memory vs 50% dataset budget, both sustained ---
+== v2 FROZEN — CPU adversarial THROUGHPUT confirmation ==
+dataset 32 MiB (budget denominator); scratchpad 8 MiB per in-flight hash (common)
+threads=16, hashes/config=16000, per-thread stack=112 KiB (charged to the GLOBAL budget)
+
+config                               thr    wall s        H/s useful H/s  correct  abort%  hitrate  ops/read
+(T=1 baselines skipped by request — they are not the gated comparison)
+
+FULL-memory miner                     16     39.85     401.48     401.48     100%    0.0%        -         -
+attacker 50% ds-budget (shared)       16    141.02     113.46     113.46     100%    0.0%    44.3%      14.0
+     retained 1859584 words (44.3% of D), global dataset-side 16.00 MiB (50.0% of 32 MiB)
+     whole working set: attacker 144 MiB vs full-memory 160 MiB (90.0%)
+
+SLOWDOWN vs full-memory @T=16 : 3.54x   [gate >= 2.0x]
+
+end_utc=2026-07-28T20:48:26Z
+DONE

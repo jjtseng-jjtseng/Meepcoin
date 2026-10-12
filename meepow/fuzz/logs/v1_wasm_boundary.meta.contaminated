@@ -1,0 +1,8 @@
+target=v1_wasm_boundary
+start_utc=2026-07-28T15:36:23Z
+start_epoch=1785252983
+corpus_files_before=19
+seconds_requested=14400
+sanitizers=address,undefined,fuzzer
+note=rerun3; launched as a detached Windows-owned wsl.exe process so WSL teardown between agent sessions cannot kill it (attempts 1 and 2 were killed that way)
+pid=607

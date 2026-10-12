@@ -1,0 +1,66 @@
+<!doctype html>
+<!-- Frozen v1 (S3 x 400) browser benchmark in a dedicated Web Worker. Measures p50/p95/p99 hash
+     latency, H/s, memory, and stop responsiveness. Not a miner: runs a fixed count then stops. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>MeepHash-W v2 — browser worker benchmark</title>
+    <style>body{font:14px system-ui;margin:2rem;max-width:60rem}pre{background:#f6f8fa;padding:1rem;overflow-x:auto}</style>
+  </head>
+  <body>
+    <h1>MeepHash-W v2 (frozen) — dedicated-worker benchmark</h1>
+    <p>Experimental. Runs a fixed number of hashes in one Web Worker, then a stop-responsiveness test.</p>
+    <div id="status">starting…</div>
+    <pre id="out">{}</pre>
+    <script type="module">
+      const status = (s) => (document.getElementById('status').textContent = s);
+      const show = (o) => (document.getElementById('out').textContent = JSON.stringify(o, null, 2));
+      const pct = (arr, p) => { const s = [...arr].sort((a, b) => a - b); return s[Math.floor(s.length * p)]; };
+
+      const ua = navigator.userAgent;
+      const engine = /Firefox/.test(ua) ? 'Firefox' : (/Chrome/.test(ua) ? 'Chromium' : 'Other');
+      const worker = new Worker('./v1_worker.js', { type: 'module' });
+
+      let result = { engine, userAgent: ua, crossOriginIsolated: self.crossOriginIsolated };
+
+      function once(pred) { return new Promise((res) => { const h = (e) => { if (pred(e.data)) { worker.removeEventListener('message', h); res(e.data); } }; worker.addEventListener('message', h); }); }
+
+      (async () => {
+        status('initializing wasm + building 32 MiB v2 dataset in worker…');
+        const t0 = performance.now();
+        worker.postMessage({ cmd: 'init', profile: 0 });
+        const ready = await once((d) => d.ev === 'ready');
+        result.setupMs = +(performance.now() - t0).toFixed(1);
+        if (ready.rc !== 0) { status('setup failed'); show(result); return; }
+
+        // 1) latency/throughput over N hashes
+        status('measuring 150 hashes…');
+        worker.postMessage({ cmd: 'run', count: 150 });
+        const done = await once((d) => d.ev === 'done');
+        const lat = done.latencies;
+        result.hashes = done.hashes;
+        result.p50_ms = +pct(lat, 0.5).toFixed(3);
+        result.p95_ms = +pct(lat, 0.95).toFixed(3);
+        result.p99_ms = +pct(lat, 0.99).toFixed(3);
+        result.mean_ms = +(lat.reduce((a, b) => a + b, 0) / lat.length).toFixed(3);
+        result.hps = +(1000 / result.mean_ms).toFixed(1);
+        result.memory = done.mem;
+
+        // 2) stop responsiveness: start a large run, stop after 400ms, measure time to idle
+        status('measuring stop responsiveness…');
+        worker.postMessage({ cmd: 'run', count: 100000 });
+        await new Promise((r) => setTimeout(r, 400));
+        const tStop = performance.now();
+        worker.postMessage({ cmd: 'stop' });
+        const stopped = await once((d) => d.ev === 'done');
+        result.stopResponsiveness_ms = +(stopped.stopResponsivenessMs ?? (performance.now() - tStop)).toFixed(2);
+        result.mainThreadStopRoundtrip_ms = +(performance.now() - tStop).toFixed(2);
+
+        status('DONE');
+        show(result);
+        window.__v1result = result;  // for extraction
+        try { await fetch('/result', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(result) }); } catch (e) {}
+      })();
+    </script>
+  </body>
+</html>

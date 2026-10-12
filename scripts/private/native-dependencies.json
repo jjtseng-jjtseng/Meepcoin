@@ -1,0 +1,38 @@
+{
+  "schema": "meepcoin-native-dependencies/1",
+  "archiveLimitBytes": 16777216,
+  "dependencies": [
+    {
+      "file": "private-deps/randomx.tar.gz",
+      "url": "https://codeload.github.com/tevador/RandomX/tar.gz/6c4340ba4561aec9a3611c1aedf9931239777fb3",
+      "commit": "6c4340ba4561aec9a3611c1aedf9931239777fb3",
+      "bytes": 181812,
+      "sha256": "d98a8885968d736b36657fa5264786d4947c3fcf433c873802678527e6db3584",
+      "destination": "external/randomx"
+    },
+    {
+      "file": "private-deps/rapidjson.tar.gz",
+      "url": "https://codeload.github.com/Tencent/rapidjson/tar.gz/129d19ba7f496df5e33658527a7158c79b99c21c",
+      "commit": "129d19ba7f496df5e33658527a7158c79b99c21c",
+      "bytes": 1054330,
+      "sha256": "44b007d419ac21b6affec58991e865ee572346ead19b73cf1c3e4e11c7a81273",
+      "destination": "external/rapidjson"
+    },
+    {
+      "file": "private-deps/supercop.tar.gz",
+      "url": "https://codeload.github.com/monero-project/supercop/tar.gz/633500ad8c8759995049ccd022107d1fa8a1bbc9",
+      "commit": "633500ad8c8759995049ccd022107d1fa8a1bbc9",
+      "bytes": 346604,
+      "sha256": "b973b9d8269ec4d97c3c3443f0dad96d09f72b1b30e616e0947557adbdbb03f7",
+      "destination": "external/supercop"
+    },
+    {
+      "file": "private-deps/trezor-common.tar.gz",
+      "url": "https://codeload.github.com/trezor/trezor-common/tar.gz/bff7fdfe436c727982cc553bdfb29a9021b423b0",
+      "commit": "bff7fdfe436c727982cc553bdfb29a9021b423b0",
+      "bytes": 1327782,
+      "sha256": "951f4df9dfb2466698e0b0a1b52ec27e4d6f13538ff22f1d6c0ae87f9d07c1b6",
+      "destination": "external/trezor-common"
+    }
+  ]
+}

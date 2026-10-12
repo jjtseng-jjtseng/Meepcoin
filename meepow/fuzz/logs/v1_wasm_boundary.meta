@@ -1,0 +1,12 @@
+target=v1_wasm_boundary
+start_utc=2026-07-28T15:59:15Z
+start_epoch=1785254355
+corpus_files_before=19
+seconds_requested=14400
+sanitizers=address,undefined,fuzzer
+conditions=clean: no Monero mining, no other heavy workloads
+exit_code=0
+end_utc=2026-07-28T19:59:16Z
+end_epoch=1785268756
+corpus_files_after=19
+crash_artifacts=2

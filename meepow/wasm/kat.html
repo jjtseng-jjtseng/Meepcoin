@@ -1,0 +1,78 @@
+<!doctype html>
+<!--
+  Bare in-browser known-answer-test page (spec §11). No UI investment, no external resources.
+  Serve this directory over HTTP (e.g. `python3 -m http.server`) and open kat.html; it loads the
+  same meepow.wasm module and the committed vectors and reports byte-for-byte matches. This
+  proves browser Wasm reproduces native output. It performs NO mining and starts nothing on its
+  own beyond running the deterministic vectors on load (a pure self-test).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MeepHash-W v0 — browser KAT self-test</title>
+    <style>
+      body { font: 14px/1.5 system-ui, sans-serif; margin: 2rem; max-width: 60rem; }
+      #summary { font-weight: 700; font-size: 1.2rem; }
+      .pass { color: #1a7f37; } .fail { color: #cf222e; }
+      pre { background: #f6f8fa; padding: 1rem; overflow-x: auto; }
+    </style>
+  </head>
+  <body>
+    <h1>MeepHash-W v0 — browser known-answer test</h1>
+    <p>Experimental research prototype. This page runs deterministic test vectors only; it does
+      not mine.</p>
+    <div id="summary">Running…</div>
+    <pre id="log"></pre>
+    <script type="module">
+      import createModule from './meepow.mjs';
+      const log = (m) => (document.getElementById('log').textContent += m + '\n');
+
+      const hexToBytes = (h) => {
+        const o = new Uint8Array(h.length / 2);
+        for (let i = 0; i < o.length; i++) o[i] = parseInt(h.substr(2 * i, 2), 16);
+        return o;
+      };
+      const bytesToHex = (u8) => [...u8].map((b) => b.toString(16).padStart(2, '0')).join('');
+      const hexBeToBigInt = (h) => BigInt('0x' + h);
+
+      const Module = await createModule();
+      const HEAP = () => Module.HEAPU8;
+
+      function runHash(param, constr, epochKey, seedHash, height, tmpl, nonce) {
+        const outHash = Module._malloc(32), outC1 = Module._malloc(32), outCh = Module._malloc(32);
+        const ek = Module._malloc(32), sh = Module._malloc(32);
+        const tp = Module._malloc(Math.max(1, tmpl.length));
+        HEAP().set(epochKey, ek); HEAP().set(seedHash, sh);
+        if (tmpl.length) HEAP().set(tmpl, tp);
+        const rc = Module.ccall('meep_run_hash', 'number',
+          ['number','number','number','number','bigint','number','number','number','number','number','number'],
+          [param, constr, ek, sh, BigInt(height), tp, tmpl.length, nonce >>> 0, outHash, outC1, outCh]);
+        const hash = HEAP().slice(outHash, outHash + 32);
+        const c1 = HEAP().slice(outC1, outC1 + 32);
+        const ch = HEAP().slice(outCh, outCh + 32);
+        [outHash, outC1, outCh, ek, sh, tp].forEach((p) => Module._free(p));
+        return { rc, hash, c1, ch };
+      }
+
+      let total = 0, failed = 0;
+      for (const file of ['../vectors/vectors_fast.json', '../vectors/vectors_dev.json']) {
+        const vectors = await (await fetch(file)).json();
+        for (const v of vectors) {
+          total++;
+          const { rc, hash, c1, ch } = runHash(
+            v.paramSetId, v.datasetConstruction === 'A' ? 0 : 1,
+            hexToBytes(v.epochKey), hexToBytes(v.seedBlockHash), hexBeToBigInt(v.blockHeight),
+            hexToBytes(v.templateBlob), Number(hexBeToBigInt(v.nonce)));
+          const ok = rc === 0 && bytesToHex(hash) === v.finalHash &&
+            bytesToHex(c1) === v.checkpointRound1 && bytesToHex(ch) === v.checkpointRoundHalf;
+          if (!ok) { failed++; if (failed <= 5) log(`MISMATCH vector ${total}: got ${bytesToHex(hash)} exp ${v.finalHash}`); }
+        }
+        log(`${file}: done`);
+      }
+      const s = document.getElementById('summary');
+      s.textContent = `${total - failed}/${total} vectors passed`;
+      s.className = failed === 0 ? 'pass' : 'fail';
+    </script>
+  </body>
+</html>

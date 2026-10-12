@@ -1,0 +1,44 @@
+name: Native currency hardening
+on:
+  push:
+    branches: ['codex/native-hardening-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-hardening-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  currency:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Ephemeral runner dependencies
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y cmake g++ pkg-config libboost-all-dev libssl-dev libunbound-dev
+      - name: Build node, wallets and real LMDB storage tests
+        run: python3 scripts/private/build-native.py "$RUNNER_TEMP/meep-native" --hardening-tests
+      - name: Currency, adversarial amounts, duplicate relay and crash restore
+        run: python3 scripts/private/verify-currency.py --binaries "$RUNNER_TEMP/meep-native/build/bin" --run-dir "$RUNNER_TEMP/meep-currency" --adversarial --crash-restore
+      - name: Three-peer partition, higher-work reorganization and malformed frames
+        run: python3 scripts/private/verify-peers.py --binaries "$RUNNER_TEMP/meep-native/build/bin" --run-dir "$RUNNER_TEMP/meep-peers" --extended
+  portable-pow:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, windows-2025]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: cmake -S meepow -B pow-build -DCMAKE_BUILD_TYPE=Release -DMEEPOW_BLAKE3_PORTABLE=ON
+      - run: cmake --build pow-build --config Release --target meepow-kat-v2-api --parallel 2
+      - run: ctest --test-dir pow-build -C Release -R '^kat_v2_api$' --output-on-failure

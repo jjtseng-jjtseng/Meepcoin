@@ -1,0 +1,33 @@
+{
+  "schema": "meepcoin-private-wasm-toolchain/1",
+  "emsdk": {
+    "repository": "https://github.com/emscripten-core/emsdk.git",
+    "tag": "6.0.3",
+    "commit": "db04e88298d9916fc51fcd3743045ca3eb695127",
+    "releaseBuild": "9074aa513b501925adb1361e208932ad32a29a5f",
+    "emccCommit": "283e2d130132859fde6a4e4c87fd254b38127651"
+  },
+  "linuxArm64Downloads": [
+    {
+      "url": "https://storage.googleapis.com/webassembly/emscripten-releases-builds/linux/9074aa513b501925adb1361e208932ad32a29a5f/wasm-binaries-arm64.tar.xz",
+      "bytes": 272041556,
+      "sha256": "042063df12a8c585c8b5fd87d4cb5330d06a125629c7511009501bf0210fcf3b"
+    },
+    {
+      "url": "https://storage.googleapis.com/webassembly/emscripten-releases-builds/deps/node-v22.16.0-linux-arm64.tar.xz",
+      "bytes": 29126496,
+      "sha256": "eab80cb88f8fda1e65f5e8d0420c9809bdb320b03fd34976ab7161b6e703b910"
+    }
+  ],
+  "sourceTested": "ca33bc6a90e3a07fb8864245188794f4b8386ab6",
+  "artifacts": {
+    "meepow/wasm/meepow.mjs": "5a61038d0d40aaaf4f33d779dfa9e0b4ee7e68817eabdf8de57465711ef49e31",
+    "meepow/wasm/meepow.wasm": "a039b57ed7d874792eced9044054764c6c3d10c316581efe64721ff52b3988a7"
+  },
+  "validation": {
+    "v2Vectors": 20,
+    "legacyVectors": 132,
+    "exactPreviousArtifactMatch": true
+  },
+  "runtimeResourceNotes": "32GiB virtual ceiling permits V8 guard reservation; 768MiB RSS watchdog, 256MiB old space and 512MiB per-Wasm maximum; 180 second deadline"
+}
