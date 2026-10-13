@@ -33,6 +33,28 @@ peer configuration; its RPC must listen on numeric loopback. The earlier
 qualification and deployment epochs have expired. This command does not start
 or revive a public testnet.
 
+The recommended launcher derives the network identity from the installed release
+and verifies its complete checksum list before contacting the local node:
+
+```sh
+python3 wallet/launch.py \
+  --release /absolute/release \
+  --wallet-dir /absolute/private/meep-wallets \
+  --daemon-port 49081 \
+  --seconds 1800
+```
+
+Add `--verify-only` to check the package and local node without starting the
+companion or creating a wallet directory. A different native version, network or
+genesis is refused before wallet access. The launcher currently accepts only the
+qualified Debian 13 ARM64 testnet17 package. Check the downloaded archive against
+its independently obtained published hash before extracting it: a checksum list
+inside an archive detects local corruption but cannot authenticate its publisher.
+The launcher starts no node, service or public network.
+
+For developers who deliberately configure the exact identity themselves, the
+underlying companion remains directly available:
+
 ```sh
 python3 wallet/companion.py \
   --wallet-rpc /absolute/release/bin/meepcoin-wallet-rpc \
@@ -127,3 +149,13 @@ seed restoration and owned-process cleanup. `--browser-seconds 900` additionally
 waits for a visible browser transfer; an API-only run is explicitly not a
 browser pass. Its retained public receipts exclude wallets, recovery words,
 passwords and private connection links. Keep the full test directory private.
+
+The newer integrated browser verifier exercises real UI creation, browser mining,
+native reward accounting, payment cancellation/confirmation, recipient credit and
+recovery in one run. See [PARTICIPANT_REHEARSAL_20261013.md](PARTICIPANT_REHEARSAL_20261013.md)
+for the dedicated-unit command, exact results and limitations. Chromium 151 on
+Debian 13 ARM64 passed with its sandbox enabled and an isolated headless profile;
+the wallet-switch test also verifies that a previous wallet's recipient and amount
+are cleared. An earlier Chrome-extension navigation block does not qualify or
+disqualify ordinary Chrome wallet use. Safari wallet use and full Windows/macOS
+native installations remain unqualified.

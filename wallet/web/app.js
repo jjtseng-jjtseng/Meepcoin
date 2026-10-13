@@ -42,6 +42,10 @@ function clearQuote() {
   quote = null; $('review').hidden = true; $('confirm-send').disabled = true;
 }
 function render(state) {
+  if (!state.opened || state.opened !== lastState?.opened) {
+    $('destination').value = ''; $('amount').value = '';
+    clearQuote();
+  }
   lastState = state;
   clearTimeout(idleTimer);
   if (quote && state.pendingReviewId !== quote.id) clearQuote();
