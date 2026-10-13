@@ -1,0 +1,216 @@
+{
+  "schema": "meepcoin-integrated-participant-qualification/1",
+  "date": "2026-10-13",
+  "status": "PASS_SCOPED_OFFLINE_BROWSER_JOURNEY_AND_LINUX_LAUNCHER",
+  "nativePackageSha256": "aa667793bef2e3a055e6c19a61f0f1f0b0e8f7bce9a0b9fc552b9473fffed2f5",
+  "host": "Debian 13 ARM64",
+  "integrated": {
+    "status": "OFFLINE_BROWSER_PARTICIPANT_JOURNEY_PASS",
+    "genesis": "5ee183402674af0316053bcf27ff159df18e8f62edef8137cb13a67dbb6f211f",
+    "network": "regtest",
+    "fixedDifficulty": 20,
+    "publicExposure": false,
+    "nativeFixtureBlocks": 64,
+    "browserMinedBlocks": 1,
+    "nativeConfirmationBlocks": 12,
+    "canonicalBrowserBlock": {
+      "block_size": 81,
+      "block_weight": 81,
+      "cumulative_difficulty": 1301,
+      "cumulative_difficulty_top64": 0,
+      "depth": 0,
+      "difficulty": 20,
+      "difficulty_top64": 0,
+      "hash": "7316256ba60df940e942af10be9a6a1aeb4c5e306052cf4ddc45e29592698d74",
+      "height": 65,
+      "long_term_weight": 176470,
+      "major_version": 16,
+      "miner_tx_hash": "4a5bce6487fc13a7dad0a7dafa977b65b146837a689a115cceae016ac20a61e7",
+      "minor_version": 16,
+      "nonce": 12,
+      "num_txes": 0,
+      "orphan_status": false,
+      "pow_hash": "b9b2828727dae382b179f80d94b6b506f7f627c2d0c2c36e4d3acf9e52b8cc0c",
+      "prev_hash": "7e87757ce47741173e83b41ed3a8d40394dd2d59e7ddce487dbcab1e56819fc7",
+      "reward": 1192055947849,
+      "timestamp": 1791890596,
+      "wide_cumulative_difficulty": "0x515",
+      "wide_difficulty": "0x14"
+    },
+    "browser": {
+      "browser": "151.0.7922.173",
+      "mode": "headless",
+      "browserCreateAndBackup": true,
+      "backupWordsCleared": true,
+      "visibleBrowserMining": true,
+      "exactBrowserReward": true,
+      "reviewCancelNoRelay": true,
+      "confirmedSend": true,
+      "exactSenderBalance": true,
+      "exactRecipientBalance": true,
+      "seedRecoverySameAddressAndBalance": true,
+      "reloadLocksWallet": true,
+      "wrongPasswordLeavesLocked": true,
+      "nativeLogsNoSeedOrPassword": true,
+      "switchingWalletClearsPaymentDraft": true,
+      "txHash": "bcc908e9a23a505debd2cec5d6b473fe7a98f059b8d9d13708f47af4b8643c7e",
+      "amountAtomic": "100000000000",
+      "feeAtomic": "86600000",
+      "aliceBalanceAtomic": "91689445966813",
+      "bobBalanceAtomic": "100000000000",
+      "browserPageErrors": [],
+      "permissionsBypassed": false,
+      "browserExtensions": "fresh isolated profile"
+    },
+    "exactNativePoolReconciliation": true,
+    "nativePoolFeeMatchesBrowserReview": true,
+    "canonicalTransferHeight": 66,
+    "peakSampledOwnedUnitRssBytes": 1601503232,
+    "sourceSha256": {
+      "wallet/companion.py": "12beb9135daaa9c303fd0213187c67258a54b56f23fe8f0705cbd134b47ebd5a",
+      "wallet/web/app.js": "b2cf0f0072b6dc216e9933e77c9e01b52a2d68366c3a5920bc7b68b24e06fe99",
+      "wallet/verify_participant.py": "f7bf634da95fbc0a41b3f911a1eb94a20d7d9cdb86876678ea8216e76a16a9de",
+      "wallet/participant_gateway.mjs": "ae1e19feb4b8414f9daf25f6f6f591b82a3df883397c13dbafd2966c38f0ef62",
+      "wallet/verify_participant_browser.mjs": "66483734c0c477983ffeaf77fcab943670fee51cae1c3110dfc8ac8d81b09c70"
+    },
+    "limits": [
+      "Browser frontend may connect through a private SSH forward to disposable Linux keys",
+      "Not an installed Windows/macOS native package qualification",
+      "Local HTTP secure-context rehearsal; not a fresh v17 public HTTPS release",
+      "One bounded run; not mobile, thermal or sustained-operation evidence"
+    ],
+    "ownedCleanupVerified": true
+  },
+  "cleanup": {
+    "processes": [
+      {
+        "name": "daemon",
+        "pid": 82112,
+        "exitCode": 0,
+        "ownedGroupEmpty": true
+      },
+      {
+        "name": "companion",
+        "pid": 82130,
+        "exitCode": 0,
+        "ownedGroupEmpty": true
+      },
+      {
+        "name": "browser",
+        "pid": 82135,
+        "exitCode": 0,
+        "ownedGroupEmpty": true
+      },
+      {
+        "name": "gateway",
+        "pid": 82325,
+        "exitCode": 0,
+        "ownedGroupEmpty": true
+      },
+      {
+        "name": "native-wallet-child",
+        "receipt": "wallets/session-77f575b995c0e3ef/PROCESS.json",
+        "ownedGroupEmpty": true
+      },
+      {
+        "name": "chromium-owned-group",
+        "ownedGroupEmpty": true
+      }
+    ],
+    "seconds": 79.79868376300146,
+    "errors": [],
+    "remainingOwnedUnitPids": [],
+    "recursiveOwnedUnitEmptyExceptController": true,
+    "sampledRssBudgetBytes": 1610612736,
+    "peakSampledRssBytes": 1601503232,
+    "kernelMemoryPeakBytes": null,
+    "memoryClaim": "Sampled sum of RSS; not a kernel hard memory ceiling"
+  },
+  "installedLauncher": {
+    "status": "REAL_INSTALLED_LINUX_WALLET_LAUNCHER_PASS",
+    "identity": {
+      "status": "INSTALLED_RELEASE_AND_LOCAL_NODE_IDENTITY_PASS",
+      "filesVerified": 3341,
+      "genesis": "551d45a5767cc6939a58ffe1b8dafc7a807f75add7db10a708cd5d58f4532785",
+      "nativeVersion": "0.2.0-testnet17-review (MeepCoin; Monero base 0.18.5.1)-release",
+      "walletOpened": false
+    },
+    "wrongNativeNetworkRejectedBeforeWalletDirectory": true,
+    "actualCompanionBootstrap": true,
+    "actualEncryptedFreshWalletCreated": true,
+    "noExistingUserWalletOpened": true,
+    "publicExposure": false
+  },
+  "launcherCleanup": {
+    "processes": [
+      {
+        "name": "wallet-launcher",
+        "exitCode": 0,
+        "ownedGroupEmpty": true
+      },
+      {
+        "name": "node-1",
+        "exitCode": 0,
+        "ownedGroupEmpty": true
+      },
+      {
+        "name": "node-0",
+        "exitCode": 0,
+        "ownedGroupEmpty": true
+      }
+    ],
+    "remainingOwnedUnitPids": []
+  },
+  "independentColdReadback": {
+    "status": "INDEPENDENT_COLD_DATABASE_READBACK_PASS",
+    "sourceDatabaseCopiedByteForByte": true,
+    "canonicalPowReadbacks": 77,
+    "browserBlockHash": "7316256ba60df940e942af10be9a6a1aeb4c5e306052cf4ddc45e29592698d74",
+    "transactionHash": "bcc908e9a23a505debd2cec5d6b473fe7a98f059b8d9d13708f47af4b8643c7e",
+    "transactionHeight": 66,
+    "allNativeRewardsAtomic": "91789532566813",
+    "expectedSenderAtomic": "91689445966813",
+    "exactBrowserBalancesReconciled": true,
+    "existingUserWalletOpened": false,
+    "originalChainFilesUnchanged": true,
+    "ownedProcessCleanupVerified": true
+  },
+  "launcherSourceSha256": "5d974549d7864f17ad194be4ad0c051b25bd092a03f49ef7d86dca8e95c0ed9a",
+  "safeEvidenceSha256": {
+    "final-v5/RESULT.json": "5a2a1604d54c9ca3d49e29deb81c755bc9644cdbc3b4089e387548eb31b4045e",
+    "final-v5/CLEANUP.json": "e50975aec572f96f456ad8aa84a5b6fbefbd0ad85eec95f0aead64b31cb5fe52",
+    "final-v5/BROWSER_RESULT.json": "0e4ccdd0576727f6eb981de67b0e7b713a257d4310442ed9097ea0e83401f2fc",
+    "final-v5/BROWSER_MINED.png": "54f7275b3e125fff44054246bb1ed30e5bfb7302c89119812409e17af24062f5",
+    "final-v5/BROWSER_REWARD.png": "fd8e043b9028e3fb9affe1459b197c643f1a081ed70689a6dd8fe65fdf9aa146",
+    "final-v5/BROWSER_RECEIVED.png": "0b5fda4860ba186391491fae3d70cf616b456739b4353a67636fc8c37f8b6a39",
+    "launcher-v1/RESULT.json": "40ef493969c763b663b240f5c2c9f9a34f742d10a6f50e027783c3064ffb334e",
+    "launcher-v1/CLEANUP.json": "cdd7fb394fcaf7571dff6f62f6989187a113c95cc49c643454afcf62a1cf933a",
+    "independent-v5/RESULT.json": "1fd6f1f9c975b13d1f8c733ab782fcfddbd523857b6355dca9355e8c32ccf1b6",
+    "independent-v5/HEADERS.json": "724ecfc8e30f6754dd595f9835f34ce9dc2a2dfec9fdfc704365a19226715e0e"
+  },
+  "priorCI": {
+    "sourceCommit": "52170462bcc1df00503d0fdc658b035641fd2d68",
+    "url": "https://github.com/jjtseng-jjtseng/Meepcoin/actions/runs/38335499980",
+    "status": "completed",
+    "conclusion": "success",
+    "fullLinuxNativeJobs": 2,
+    "portablePowJobs": 4
+  },
+  "review": {
+    "kind": "Focused text-only Claude source review via model-bridge",
+    "findingsFixed": [
+      "Require actual browser child and normal exit",
+      "PASS only after successful cleanup",
+      "Reconcile recursive exclusive cgroup including detached helpers",
+      "Fail closed on cleanup errors"
+    ],
+    "externalHumanSecurityAudit": false
+  },
+  "claimLimits": [
+    "Offline regtest v16 difficulty 20, not a fresh public v17 HTTPS participant run",
+    "Sandboxed headless Chromium; not a physically visible desktop or Safari run",
+    "Earlier native archive does not contain this source add-on",
+    "Windows/macOS full native packaging, mobile, endurance and external human review remain unqualified",
+    "No existing user wallet opened; no public epoch restarted or invitation distributed"
+  ]
+}

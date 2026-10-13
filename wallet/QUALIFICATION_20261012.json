@@ -1,0 +1,82 @@
+{
+  "schema": "meepcoin-local-browser-wallet-qualification/1",
+  "status": "PASS_SCOPED_LOCAL_COMPANION",
+  "host": "Debian 13 ARM64",
+  "nativePackageSha256": "aa667793bef2e3a055e6c19a61f0f1f0b0e8f7bce9a0b9fc552b9473fffed2f5",
+  "native": {
+    "status": "REAL_NATIVE_LOCAL_WALLET_API_PASS",
+    "genesis": "5ee183402674af0316053bcf27ff159df18e8f62edef8137cb13a67dbb6f211f",
+    "regtestFixedDifficulty": 20,
+    "publicExposure": false,
+    "exactAtomicDecimals": true,
+    "nativeDigestAuthentication": true,
+    "encryptedWalletFiles": true,
+    "prepareAndCancelNeverRelayed": true,
+    "confirmRelaysOnce": true,
+    "amountAtomic": "100000000000",
+    "feeAtomic": "86600000",
+    "txHash": "2ae782e58cad1d1ca72264573f618dc926edd7ca74205e93e53c4836472c384b",
+    "exactSenderAccounting": true,
+    "exactRecipientAccounting": true,
+    "recoverySameAddressAndBalance": true,
+    "passwordRequiredForBackup": true,
+    "wrongPasswordRemainsLocked": true,
+    "browser": {
+      "visibleNativeTransfer": true,
+      "browser": "Codex in-app browser (Chromium)",
+      "documentVisibility": "visible",
+      "nativeTxHash": "9ccd47c2a924a6bee372318527a5a3195a4fc888f97cc0cd39a3649bf1d87992",
+      "amountAtomic": "100000000000",
+      "feeAtomic": "86600000",
+      "canonicalConfirmations": 12,
+      "recipientBalanceBeforeMEEP": "1",
+      "recipientBalanceAfterMEEP": "2",
+      "recipientUnlockedAfterMEEP": "2",
+      "wrongRevealPasswordLocksNativeAndUI": true,
+      "reloadRequestsNativeLock": true,
+      "secretsEntered": "Only a known disposable fixture password; no recovery words recorded by browser automation",
+      "chromeExtensionNavigation": "BLOCKED_BY_CLIENT for random dedicated loopback host; not claimed as a Chrome wallet pass",
+      "screenshot": "WALLET_BROWSER_OVERVIEW_v4.png"
+    },
+    "wallet-coreSha256": "12beb9135daaa9c303fd0213187c67258a54b56f23fe8f0705cbd134b47ebd5a",
+    "wallet-pageSha256": "971fb4884ff1882543be6304fb0b4ceebf4fec2ad5b0aa6b37f63134e5e0533d",
+    "nativeLogsNoSeedOrPassword": true
+  },
+  "unitTests": {
+    "windows": {
+      "passed": 17,
+      "skipped": 1,
+      "skipReason": "Unprivileged symlink creation unavailable"
+    },
+    "linux": {
+      "passed": 18,
+      "skipped": 0
+    }
+  },
+  "cleanup": {
+    "companionExit": 0,
+    "daemonExit": 0,
+    "allExplicitNativeWalletProcessGroupsEmpty": true,
+    "temporarySshForwardStopped": true,
+    "publicMiningStarted": false
+  },
+  "review": {
+    "kind": "Focused text-only model source review",
+    "provider": "Claude via model-bridge",
+    "externalSecurityAudit": false
+  },
+  "remaining": [
+    "Standalone browser key generation and signing",
+    "Windows and macOS full native distribution and installer qualification",
+    "Ordinary Chrome and Safari local-wallet participant qualification",
+    "Mobile and endurance",
+    "Integrated fresh public participant journey",
+    "External human security review"
+  ],
+  "evidenceDirectory": "readiness-20261012",
+  "failedAttemptsPreserved": [
+    "native-api-v1: Digest retry connection mismatch, fixed without disabling authentication",
+    "native-browser-v3: browser-restart port was in TIME_WAIT; fixture now uses a fresh listener"
+  ],
+  "claimLimits": "Offline regtest with disposable wallets and fixed difficulty 20. This does not qualify the six broader product areas or a public wallet service."
+}

@@ -1,7 +1,7 @@
 name: Native currency hardening
 on:
   push:
-    branches: ['codex/native-hardening-*']
+    branches: ['codex/native-hardening-*', 'codex/browser-wallet-*']
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,12 +22,38 @@ jobs:
           persist-credentials: false
       - name: Ephemeral runner dependencies
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y cmake g++ pkg-config libboost-all-dev libssl-dev libunbound-dev libzmq3-dev libsodium-dev
+      - name: Verify published participant imports and pinned browser assets
+        run: node scripts/private/verify-participant-assets.mjs
+      - name: HTTPS gateway authorization, stop, expiry and outage boundaries
+        run: node --test --test-concurrency=1 pool/private/tests/experiment.test.mjs pool/private/tests/gateway.test.mjs pool/private/tests/page_lifecycle.test.mjs pool/private/tests/testnet_service.test.mjs
       - name: Build node, wallets and real LMDB storage tests
         run: python3 scripts/private/build-native.py "$RUNNER_TEMP/meep-native" --hardening-tests
       - name: Currency, adversarial amounts, duplicate relay and crash restore
         run: python3 scripts/private/verify-currency.py --binaries "$RUNNER_TEMP/meep-native/build/bin" --run-dir "$RUNNER_TEMP/meep-currency" --adversarial --crash-restore --seed-restore
+      - name: Local wallet boundary and interrupted-payment checks
+        run: python3 -m unittest discover -s wallet -p test_companion.py -v
+      - name: Real native wallet companion create, transfer and seed recovery
+        run: python3 wallet/verify_native.py --binaries "$RUNNER_TEMP/meep-native/build/bin" --run-dir "$RUNNER_TEMP/meep-local-wallet"
       - name: Three-peer partition, higher-work reorganization and malformed frames
         run: python3 scripts/private/verify-peers.py --binaries "$RUNNER_TEMP/meep-native/build/bin" --run-dir "$RUNNER_TEMP/meep-peers" --extended
+      - name: Real Chromium wallet creation, mining reward, payment and recovery
+        if: matrix.runner == 'ubuntu-24.04'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x /usr/bin/google-chrome
+          npm install --prefix "$RUNNER_TEMP/participant-browser" --ignore-scripts --no-audit --no-fund playwright-core@1.62.1
+          sudo systemd-run --wait --pipe --collect \
+            --unit="meepcoin-participant-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --uid="$(id -u)" --working-directory="$GITHUB_WORKSPACE" \
+            --property=CPUQuota=100% --property=TasksMax=192 --property=Nice=10 \
+            --property=RuntimeMaxSec=1200 --property=KillMode=control-group --property=TimeoutStopSec=40 \
+            /usr/bin/python3 "$GITHUB_WORKSPACE/wallet/verify_participant.py" \
+            --binaries "$RUNNER_TEMP/meep-native/build/bin" \
+            --native-hash "$RUNNER_TEMP/meep-native/pow-build/meepow-v2-hash" \
+            --node "$(command -v node)" --run-dir "$RUNNER_TEMP/meep-participant" \
+            --browser-binary /usr/bin/google-chrome --max-rss-mib 2048 \
+            --playwright-module "$RUNNER_TEMP/participant-browser/node_modules/playwright-core/index.mjs"
       - name: Retain qualification receipts without wallet files
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -43,6 +69,14 @@ jobs:
             ${{ runner.temp }}/meep-currency/CLEANUP.json
             ${{ runner.temp }}/meep-peers/RESULT.json
             ${{ runner.temp }}/meep-peers/CLEANUP.json
+            ${{ runner.temp }}/meep-local-wallet/RESULT.json
+            ${{ runner.temp }}/meep-local-wallet/CLEANUP.json
+            ${{ runner.temp }}/meep-participant/RESULT.json
+            ${{ runner.temp }}/meep-participant/CLEANUP.json
+            ${{ runner.temp }}/meep-participant/BROWSER_RESULT.json
+            ${{ runner.temp }}/meep-participant/BROWSER_MINED.png
+            ${{ runner.temp }}/meep-participant/BROWSER_REWARD.png
+            ${{ runner.temp }}/meep-participant/BROWSER_RECEIVED.png
   portable-pow:
     strategy:
       fail-fast: false

@@ -1,0 +1,14 @@
+{
+  "name": "meepcoin-native-testnet",
+  "version": "0.1.0-devnet",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "verify:participant-assets": "node scripts/private/verify-participant-assets.mjs",
+    "private:miner": "node pool/private/server.mjs"
+  }
+}

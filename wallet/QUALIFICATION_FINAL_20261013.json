@@ -1,0 +1,269 @@
+{
+  "schema": "meepcoin-participant-runtime-qualification/2",
+  "date": "2026-10-13",
+  "status": "PASS_SCOPED_CURRENT_BROWSER_RUNTIME_AND_PARTICIPANT_NODE",
+  "sourceProvenance": {
+    "browserBasePublicCommit": "11c386957db76095acf58585dab1877a80680d76",
+    "browserOnlyChange": "Wait for completed persisted submitted-state UI render, not transient response wording",
+    "exactRuntimeSourceHashes": {
+      "wallet/companion.py": "12beb9135daaa9c303fd0213187c67258a54b56f23fe8f0705cbd134b47ebd5a",
+      "wallet/web/app.js": "b2cf0f0072b6dc216e9933e77c9e01b52a2d68366c3a5920bc7b68b24e06fe99",
+      "wallet/verify_participant.py": "e758fbf031458d0e75c4c3179e9ef403a5597adacda8d7cec822dc7b88fb959c",
+      "wallet/participant_gateway.mjs": "ae1e19feb4b8414f9daf25f6f6f591b82a3df883397c13dbafd2966c38f0ef62",
+      "wallet/verify_participant_browser.mjs": "c41403ee90020a60533b6ff06c944300af2360cc5e844b5acbe2f11fb01a7d1a"
+    },
+    "participantNodeSha256": "c33c58820fe833a1191b688d4ebd3b54c79720cd5947c55d660eb7103a426d8f",
+    "launchPySha256": "5d974549d7864f17ad194be4ad0c051b25bd092a03f49ef7d86dca8e95c0ed9a"
+  },
+  "nativePackageSha256": "aa667793bef2e3a055e6c19a61f0f1f0b0e8f7bce9a0b9fc552b9473fffed2f5",
+  "browserRehearsal": {
+    "status": "OFFLINE_BROWSER_PARTICIPANT_JOURNEY_PASS",
+    "genesis": "5ee183402674af0316053bcf27ff159df18e8f62edef8137cb13a67dbb6f211f",
+    "network": "regtest",
+    "fixedDifficulty": 20,
+    "publicExposure": false,
+    "nativeFixtureBlocks": 64,
+    "browserMinedBlocks": 1,
+    "nativeConfirmationBlocks": 12,
+    "canonicalBrowserBlock": {
+      "block_size": 81,
+      "block_weight": 81,
+      "cumulative_difficulty": 1301,
+      "cumulative_difficulty_top64": 0,
+      "depth": 0,
+      "difficulty": 20,
+      "difficulty_top64": 0,
+      "hash": "f26e935708f4440b3e69199c1618e4ca0d9e27c35a658da57795fc1c89b0176b",
+      "height": 65,
+      "long_term_weight": 176470,
+      "major_version": 16,
+      "miner_tx_hash": "ea39c29e57338b91794db95762247d7be90c909244f94592ae8ef025a3c7ee19",
+      "minor_version": 16,
+      "nonce": 17,
+      "num_txes": 0,
+      "orphan_status": false,
+      "pow_hash": "b0119814a2b0b4d06500ee0e882f64d9de0060fe6ae8987c2d2d906254ed440c",
+      "prev_hash": "042e3eef04f7668d61068000c8fd475f4d15ea8b58e2319da67b9a5fa9845f95",
+      "reward": 1192055947849,
+      "timestamp": 1791894952,
+      "wide_cumulative_difficulty": "0x515",
+      "wide_difficulty": "0x14"
+    },
+    "browser": {
+      "browser": "151.0.7922.173",
+      "mode": "headless",
+      "browserCreateAndBackup": true,
+      "backupWordsCleared": true,
+      "visibleBrowserMining": true,
+      "exactBrowserReward": true,
+      "reviewCancelNoRelay": true,
+      "confirmedSend": true,
+      "exactSenderBalance": true,
+      "exactRecipientBalance": true,
+      "seedRecoverySameAddressAndBalance": true,
+      "reloadLocksWallet": true,
+      "wrongPasswordLeavesLocked": true,
+      "nativeLogsNoSeedOrPassword": true,
+      "switchingWalletClearsPaymentDraft": true,
+      "txHash": "f508589de57502d82cbaddb1e1c0c926bdf1457ae481ee0ff830d1136bfa6693",
+      "amountAtomic": "100000000000",
+      "feeAtomic": "86600000",
+      "aliceBalanceAtomic": "91689445966813",
+      "bobBalanceAtomic": "100000000000",
+      "browserPageErrors": [],
+      "permissionsBypassed": false,
+      "browserExtensions": "fresh isolated profile"
+    },
+    "exactNativePoolReconciliation": true,
+    "nativePoolFeeMatchesBrowserReview": true,
+    "canonicalTransferHeight": 66,
+    "peakSampledOwnedUnitRssBytes": 1590886400,
+    "sampledOwnedUnitRssBudgetBytes": 1610612736,
+    "sourceSha256": {
+      "wallet/companion.py": "12beb9135daaa9c303fd0213187c67258a54b56f23fe8f0705cbd134b47ebd5a",
+      "wallet/web/app.js": "b2cf0f0072b6dc216e9933e77c9e01b52a2d68366c3a5920bc7b68b24e06fe99",
+      "wallet/verify_participant.py": "e758fbf031458d0e75c4c3179e9ef403a5597adacda8d7cec822dc7b88fb959c",
+      "wallet/participant_gateway.mjs": "ae1e19feb4b8414f9daf25f6f6f591b82a3df883397c13dbafd2966c38f0ef62",
+      "wallet/verify_participant_browser.mjs": "c41403ee90020a60533b6ff06c944300af2360cc5e844b5acbe2f11fb01a7d1a"
+    },
+    "limits": [
+      "Browser frontend may connect through a private SSH forward to disposable Linux keys",
+      "Not an installed Windows/macOS native package qualification",
+      "Local HTTP secure-context rehearsal; not a fresh v17 public HTTPS release",
+      "One bounded run; not mobile, thermal or sustained-operation evidence"
+    ],
+    "ownedCleanupVerified": true
+  },
+  "browserCleanup": {
+    "processes": [
+      {
+        "name": "daemon",
+        "pid": 84059,
+        "exitCode": 0,
+        "ownedGroupEmpty": true
+      },
+      {
+        "name": "companion",
+        "pid": 84077,
+        "exitCode": 0,
+        "ownedGroupEmpty": true
+      },
+      {
+        "name": "browser",
+        "pid": 84082,
+        "exitCode": 0,
+        "ownedGroupEmpty": true
+      },
+      {
+        "name": "gateway",
+        "pid": 84328,
+        "exitCode": 0,
+        "ownedGroupEmpty": true
+      },
+      {
+        "name": "native-wallet-child",
+        "receipt": "wallets/session-afcb4c54e860cca4/PROCESS.json",
+        "ownedGroupEmpty": true
+      },
+      {
+        "name": "chromium-owned-group",
+        "ownedGroupEmpty": true
+      }
+    ],
+    "seconds": 79.7780379219912,
+    "errors": [],
+    "remainingOwnedUnitPids": [],
+    "recursiveOwnedUnitEmptyExceptController": true,
+    "sampledRssBudgetBytes": 1610612736,
+    "peakSampledRssBytes": 1590886400,
+    "kernelMemoryPeakBytes": null,
+    "memoryClaim": "Sampled sum of RSS; not a kernel hard memory ceiling"
+  },
+  "participantNode": {
+    "status": "REAL_PARTICIPANT_NODE_STARTER_PASS",
+    "network": "offline v17 identity readback, old expired deployment package",
+    "nativeMiningPerformed": false,
+    "publicExposure": false,
+    "nativePidCount": 2,
+    "checksumFilesVerified": 3341,
+    "launcherAcceptedOwnNode": true,
+    "nodeDeadlineStops": true,
+    "operatorStopWorks": true,
+    "coldReopenSameIdentity": true,
+    "wrongIdentityRefusedBeforeNativeStart": true,
+    "unboundExistingDataRefused": true,
+    "occupiedRpcRefusedBeforeDataCreation": true,
+    "walletCreated": false,
+    "sourceSha256": "c33c58820fe833a1191b688d4ebd3b54c79720cd5947c55d660eb7103a426d8f",
+    "privateSshPeerConnectionTested": false
+  },
+  "participantPrivatePeer": {
+    "status": "REAL_PRIVATE_LOOPBACK_PARTICIPANT_PEER_PASS",
+    "sourceSha256": "c33c58820fe833a1191b688d4ebd3b54c79720cd5947c55d660eb7103a426d8f",
+    "actualNativeIncomingAndOutgoingHandshake": true,
+    "numericLoopbackPeersOnly": true,
+    "participantIncomingConnections": 0,
+    "participantOutgoingConnections": 1,
+    "launcherAcceptedConnectedParticipantNode": true,
+    "repeatedStopSignalsClean": true,
+    "genesis": "551d45a5767cc6939a58ffe1b8dafc7a807f75add7db10a708cd5d58f4532785",
+    "height": 1,
+    "nativeMiningPerformed": false,
+    "publicExposure": false,
+    "walletOpened": false,
+    "sshAuthenticationOrProvisioningTested": false
+  },
+  "participantNodeCleanup": {
+    "node-v2": {
+      "remainingOwnedUnitPids": [],
+      "children": [
+        {
+          "name": "operator",
+          "exitCode": 0
+        },
+        {
+          "name": "participant",
+          "exitCode": 0
+        }
+      ]
+    },
+    "node-v3": {
+      "remainingOwnedUnitPids": [],
+      "children": [
+        {
+          "name": "deadline",
+          "exitCode": 0
+        },
+        {
+          "name": "reopen-stop",
+          "exitCode": 0
+        },
+        {
+          "name": "mismatch",
+          "exitCode": 1
+        },
+        {
+          "name": "unbound",
+          "exitCode": 1
+        },
+        {
+          "name": "occupied",
+          "exitCode": 1
+        }
+      ]
+    }
+  },
+  "httpsGatewayBoundaries": {
+    "status": "PASS_33_OF_33_ON_LINUX",
+    "skipped": 0,
+    "publicSourceCommit": "5306176",
+    "durationSeconds": 23.804,
+    "sourceSha256": {
+      "pool/private/configure_testnet.mjs": "016b944a1b0a14ecd53f00404325b405dcfc5ef8404e2bf930a29ca1ef4b9dc8",
+      "pool/private/experiment.mjs": "d839f73782e588aadf3b210c4afb885a524f9253670e7d3993c5285800d88363",
+      "pool/private/testnet_service.mjs": "bcd02060e95d776fbd9b59dc0753efc1077e76120fa6e9f368cbc6dc09f1bf2b",
+      "pool/private/tls_identity.mjs": "9ad7b280396748a053cae9f9033663ae8db50b54a6456daa48f48b53df8245b3",
+      "pool/private/tests/experiment.test.mjs": "de67ad9a4d0addcf34b706acd531951ca33343d7b266dd47534b32bff6f83234",
+      "pool/private/tests/gateway.test.mjs": "155727461d09e5071d535c495b84ad9a25b4126ee440433d6e1ee3fc82615056",
+      "pool/private/tests/page_lifecycle.test.mjs": "55ccb4d553df511f53d3c783b7777ed020893c90c5eef08c897a86193091b5b3",
+      "pool/private/tests/testnet_service.test.mjs": "e5edc3d75f2b80ddd2f132f3c084feb08c3bfa6bc34faf95d87fd93f201a6a3b"
+    },
+    "scope": "Authorization, quotas, rotation, stop, expiry, identity and outage admission with native job stubs; separate browser run exercises real native acceptance."
+  },
+  "rawReceiptSha256": {
+    "public-v9/RESULT.json": "8e64beb316792345389f5f3301883e6f030c0ca0ce9192b3d7998fdeb11fa7cb",
+    "public-v9/CLEANUP.json": "9b9f1027108ff6a8b9b7b196b9938e32499ad387e5c40106391fb75b3b08e5b0",
+    "public-v9/BROWSER_RESULT.json": "01fb99284765be89582de354d0410c695feaff321a609fdaa8b1eaf470a00f01",
+    "node-v2/RESULT.json": "55cf13d1f36822ca3e50084c62bdbad5d09698989ff53bae688a0f4d4648d5da",
+    "node-v2/CLEANUP.json": "24c447731781a9c054ef3e5bffd92e584337c2974db8ee968ebf51b54c891c42",
+    "node-v3/RESULT.json": "8d7aea18f262aa47f47ccde8880872687a6abad8b656772a94ada8cb429b97b8",
+    "node-v3/CLEANUP.json": "1a54a870a11eef38326d1d4ee10e30f90e792c0285ed5057475eee804e36f2a1"
+  },
+  "preservedFailures": [
+    {
+      "ciRun": 38391498545,
+      "cause": "Missing published mining dependencies; fixed with exact production dependency closure."
+    },
+    {
+      "ciRun": 38394365396,
+      "cause": "x64 Chrome exceeded Pi 1536-MiB sampled RSS profile; CI now explicitly uses 2048 MiB, Pi remains 1536."
+    },
+    {
+      "ciRun": 38396276269,
+      "piRun": "public-v8",
+      "cause": "UI test raced transient Submitted response against persisted state render. Native Pi journal recorded successful submission. Corrected test waits for stable submitted state and still requires exact native pool/fee/canonical reconciliation."
+    }
+  ],
+  "ciForResultingPublicCommit": "Must be read separately from GitHub Actions; no future CI success is inferred by this receipt.",
+  "limits": [
+    "Offline regtest v16 at fixed difficulty 20; not a fresh public v17 HTTPS installed-participant qualification.",
+    "Chromium is sandboxed and headless; document-visible mining is not a physical Safari window qualification.",
+    "Native release is Debian 13 ARM64; portable PoW does not qualify native Windows/macOS wallets.",
+    "Node identity and actual loopback peer handshake passed using expired v17 binaries and fresh private databases; no public epoch was revived.",
+    "Private SSH authentication, restricted participant accounts and actual remote forwarding were not provisioned or tested.",
+    "Memory figures are sampled summed RSS. Pi has no kernel hard memory ceiling in this test.",
+    "No external human security audit, monetary-value or unrestricted P2P readiness claim."
+  ],
+  "publicEpochStarted": false,
+  "realUserWalletAccessed": false
+}

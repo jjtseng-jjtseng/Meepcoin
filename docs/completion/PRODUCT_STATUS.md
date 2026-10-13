@@ -1,3 +1,55 @@
+# MeepCoin integrated participant checkpoint - October 13, 2026
+
+The final October 13 runtime receipt is
+`wallet/QUALIFICATION_FINAL_20261013.json`. The published tree now includes the
+actual private and HTTPS gateway implementations, all browser mining imports
+and the exact pinned Wasm. The installed participant node starter passes real
+native identity/start/deadline/cold-reopen/refusal and private loopback peer
+tests. It complements the wallet launcher; it does not create participant SSH
+accounts or revive the expired public epoch. The corrected Chromium check waits
+for the completed persisted submission screen, then independently reconciles
+the exact native pool entry, fee and canonical transfer. All owned processes
+stopped. The Pi retained its 1,536-MiB sampled RSS budget; x64 CI explicitly uses
+2,048 MiB. Neither number claims a kernel memory ceiling. Read the final source
+commit's own GitHub Actions result separately; source receipts do not predict CI.
+
+MeepCoin has a working experimental browser mining and native wallet path. It
+is not ready for an unrestricted public launch. The previous finite desktop
+invitation deployment stopped and expired; no public epoch was restarted here.
+
+One new automated Chromium run completed wallet creation and backup, actual
+browser mining, exact native reward reconciliation, cancellation without relay,
+one confirmed payment, exact recipient credit and seed recovery. Its native
+controller independently checked the pool fee, canonical block/transaction and
+owned-process cleanup before writing PASS. It used fresh disposable wallets on
+offline regtest at difficulty 20: 64 native fixture blocks, one browser block and
+12 native confirmation blocks. Chromium was headless with its sandbox enabled.
+
+The wallet now clears payment drafts on lock or wallet changes. A new Debian 13
+ARM64 launcher verified 3,341 installed release files and the actual local node
+identity, refused a wrong network before wallet-directory creation, and started
+the real companion to create and lock a fresh encrypted wallet. These checks do
+not qualify a fresh public HTTPS release, full Windows/macOS packages, mobile,
+longer operation or an external human security review.
+
+The prior GitHub workflow at public source commit `5217046` completed both full
+Linux native jobs and all four portable PoW jobs successfully. The integrated
+browser check is now included in the Linux x64 workflow; that new run must have
+its own result. See [PARTICIPANT_REHEARSAL_20261013.md](PARTICIPANT_REHEARSAL_20261013.md),
+[LOCAL_WEB_WALLET.md](LOCAL_WEB_WALLET.md) and [READINESS_NEXT_SIX.md](READINESS_NEXT_SIX.md).
+
+# MeepCoin local browser wallet checkpoint
+
+The next wallet increment provides a browser interface to a local native wallet:
+create, encrypted unlock, backup, receive, exact amount/fee review, separate send
+confirmation, transaction history, lock and recovery. A real native API rehearsal
+and a visible Chromium browser payment passed on an isolated offline test chain.
+An interrupted-send record survives restart and blocks another payment until the
+native wallet resolves the recorded hash. See [LOCAL_WEB_WALLET.md](LOCAL_WEB_WALLET.md)
+for custody, installation and limits, and [READINESS_NEXT_SIX.md](READINESS_NEXT_SIX.md)
+for remaining product work. This is not a standalone website signing wallet or
+completion of every production-readiness area.
+
 # MeepCoin deployed invitation checkpoint
 
 The six-step deployed desktop invitation rehearsal is complete. Windows Chrome and
