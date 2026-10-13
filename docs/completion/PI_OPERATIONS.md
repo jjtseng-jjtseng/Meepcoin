@@ -33,6 +33,12 @@ the native node needs canonical reconciliation before retrying. Check each unit'
 `ActiveState` and empty `ControlGroup`, then verify the owned ports have closed.
 Do not kill unrelated processes by executable name.
 
+The conservative watchdog returns exit 1 for an explicit operator signal, even
+when the native child shuts down with exit 0. Consequently systemd can retain a
+`failed` state after a deliberate stop. Check the watchdog's `operator_signal_15`
+receipt, native child exit code, empty cgroup and closed owned ports to interpret
+that state. The final cold restore passed after this exact shutdown behavior.
+
 Every gateway configuration contains an absolute start and end, at most one hour
 apart. Its first start must be within one hour of the pinned genesis. The process
 also uses a monotonic deadline. Restarting cannot extend that saved epoch; an
