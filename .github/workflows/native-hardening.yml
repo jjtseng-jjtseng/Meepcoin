@@ -52,7 +52,7 @@ jobs:
             --binaries "$RUNNER_TEMP/meep-native/build/bin" \
             --native-hash "$RUNNER_TEMP/meep-native/pow-build/meepow-v2-hash" \
             --node "$(command -v node)" --run-dir "$RUNNER_TEMP/meep-participant" \
-            --browser-binary /usr/bin/google-chrome \
+            --browser-binary /usr/bin/google-chrome --max-rss-mib 2048 \
             --playwright-module "$RUNNER_TEMP/participant-browser/node_modules/playwright-core/index.mjs"
       - name: Retain qualification receipts without wallet files
         if: always()

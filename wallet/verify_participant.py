@@ -31,9 +31,13 @@ def main():
     parser.add_argument('--mining-port', type=int, default=46882)
     parser.add_argument('--browser-binary', type=Path, required=True)
     parser.add_argument('--playwright-module', type=Path, required=True)
+    parser.add_argument('--max-rss-mib', type=int, default=1536,
+                        help='Sampled whole-owned-unit RSS ceiling, 512-4096 MiB (Pi qualification: 1536; CI x64: 2048)')
     args = parser.parse_args()
     assert 1024 <= args.wallet_port <= 65535 and 1024 <= args.mining_port <= 65535
     assert args.wallet_port != args.mining_port
+    assert 512 <= args.max_rss_mib <= 4096, 'RSS budget must be 512-4096 MiB'
+    rss_budget = args.max_rss_mib * 1024**2
     os.umask(0o077)
     root = args.run_dir.resolve()
     root.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -87,7 +91,7 @@ def main():
                 except FileNotFoundError:
                     pass
             peak_rss = max(peak_rss, rss)
-            assert rss < 1536 * 1024**2, 'Owned unit exceeded sampled RSS budget'
+            assert rss < rss_budget, 'Owned unit exceeded sampled RSS budget'
             assert all(child.poll() is None or (allow_browser_exit and name == 'browser' and child.returncode == 0)
                        for name, child in children), 'Owned child exited early'
             try:
@@ -212,6 +216,7 @@ def main():
                   'exactNativePoolReconciliation': True,
                   'nativePoolFeeMatchesBrowserReview': True, 'canonicalTransferHeight': 66,
                   'peakSampledOwnedUnitRssBytes': peak_rss,
+                  'sampledOwnedUnitRssBudgetBytes': rss_budget,
                   'sourceSha256': {name: hashlib.sha256((source / name).read_bytes()).hexdigest()
                       for name in ['wallet/companion.py', 'wallet/web/app.js', 'wallet/verify_participant.py',
                                    'wallet/participant_gateway.mjs', 'wallet/verify_participant_browser.mjs']},
@@ -293,7 +298,7 @@ def main():
         save('CLEANUP.json', {'processes': cleanup, 'seconds': time.monotonic() - began,
              'errors': cleanup_errors, 'remainingOwnedUnitPids': remaining,
              'recursiveOwnedUnitEmptyExceptController': not remaining,
-             'sampledRssBudgetBytes': 1536 * 1024**2, 'peakSampledRssBytes': peak_rss,
+             'sampledRssBudgetBytes': rss_budget, 'peakSampledRssBytes': peak_rss,
              'kernelMemoryPeakBytes': int(memory_peak.read_text()) if memory_peak.exists() else None,
              'memoryClaim': 'Sampled sum of RSS; not a kernel hard memory ceiling'})
         assert not cleanup_errors and not remaining and all(row['ownedGroupEmpty'] for row in cleanup)
