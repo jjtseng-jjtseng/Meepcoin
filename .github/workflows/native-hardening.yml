@@ -22,6 +22,8 @@ jobs:
           persist-credentials: false
       - name: Ephemeral runner dependencies
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y cmake g++ pkg-config libboost-all-dev libssl-dev libunbound-dev libzmq3-dev libsodium-dev
+      - name: Verify published participant imports and pinned browser assets
+        run: node scripts/private/verify-participant-assets.mjs
       - name: Build node, wallets and real LMDB storage tests
         run: python3 scripts/private/build-native.py "$RUNNER_TEMP/meep-native" --hardening-tests
       - name: Currency, adversarial amounts, duplicate relay and crash restore

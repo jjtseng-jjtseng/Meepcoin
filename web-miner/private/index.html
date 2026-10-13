@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MeepCoin · Private miner</title><link rel="stylesheet" href="/private/style.css"></head>
+<body><main><p class="eyebrow">MEEP COIN / PRIVATE LAB</p><h1>Your browser.<br>Your mining switch.</h1>
+<p class="intro">An experimental cryptocurrency mined voluntarily with MeepHash-W. This page connects to your private node. Test coins have no monetary value.</p>
+<section class="panel"><div class="status"><span id="light"></span><strong id="state">Idle</strong></div>
+<p id="detail" role="status" aria-live="polite">Nothing is hashing. Start creates one worker and searches one bounded block template.</p>
+<div class="buttons"><button id="start">Start mining</button><button id="stop" disabled>Stop</button></div>
+<dl><div><dt>Block height</dt><dd id="height">—</dd></div><div><dt>Network difficulty</dt><dd id="difficulty">—</dd></div>
+<div><dt>Hashes this run</dt><dd id="hashes">0</dd></div><div><dt>Worker limit</dt><dd>1</dd></div></dl>
+</section><section class="notes"><h2>You stay in control</h2>
+<p>Mining uses your CPU and electricity. Each click searches at most 8,192 nonces for two minutes. It stops when the tab is hidden, closed, or reloaded. Returning to this tab never restarts mining.</p>
+<p>The server checks every candidate with its own Wasm instance, a native executable, and the node. A block is reported only after its stored proof of work is read back from the canonical chain. Later reorganizations remain possible.</p>
+<p class="label">Mining reward address</p><code id="address">Loading public address…</code>
+<p>Rewards go directly to this configured address. This page stores no wallet keys and offers no pooled balance or payout promise.</p></section>
+<details><summary>Latest node result</summary><pre id="result">No candidate submitted.</pre></details>
+<footer>Private experimental build · No public network connections from this page</footer>
+</main><script type="module" src="/private/app.js"></script></body></html>
