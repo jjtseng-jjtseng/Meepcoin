@@ -1,7 +1,7 @@
 name: Native currency hardening
 on:
   push:
-    branches: ['codex/native-hardening-*']
+    branches: ['codex/native-hardening-*', 'codex/browser-wallet-*']
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,6 +26,10 @@ jobs:
         run: python3 scripts/private/build-native.py "$RUNNER_TEMP/meep-native" --hardening-tests
       - name: Currency, adversarial amounts, duplicate relay and crash restore
         run: python3 scripts/private/verify-currency.py --binaries "$RUNNER_TEMP/meep-native/build/bin" --run-dir "$RUNNER_TEMP/meep-currency" --adversarial --crash-restore --seed-restore
+      - name: Local wallet boundary and interrupted-payment checks
+        run: python3 -m unittest discover -s wallet -p test_companion.py -v
+      - name: Real native wallet companion create, transfer and seed recovery
+        run: python3 wallet/verify_native.py --binaries "$RUNNER_TEMP/meep-native/build/bin" --run-dir "$RUNNER_TEMP/meep-local-wallet"
       - name: Three-peer partition, higher-work reorganization and malformed frames
         run: python3 scripts/private/verify-peers.py --binaries "$RUNNER_TEMP/meep-native/build/bin" --run-dir "$RUNNER_TEMP/meep-peers" --extended
       - name: Retain qualification receipts without wallet files
@@ -43,6 +47,8 @@ jobs:
             ${{ runner.temp }}/meep-currency/CLEANUP.json
             ${{ runner.temp }}/meep-peers/RESULT.json
             ${{ runner.temp }}/meep-peers/CLEANUP.json
+            ${{ runner.temp }}/meep-local-wallet/RESULT.json
+            ${{ runner.temp }}/meep-local-wallet/CLEANUP.json
   portable-pow:
     strategy:
       fail-fast: false

@@ -1,3 +1,15 @@
+# MeepCoin local browser wallet checkpoint
+
+The next wallet increment provides a browser interface to a local native wallet:
+create, encrypted unlock, backup, receive, exact amount/fee review, separate send
+confirmation, transaction history, lock and recovery. A real native API rehearsal
+and a visible Chromium browser payment passed on an isolated offline test chain.
+An interrupted-send record survives restart and blocks another payment until the
+native wallet resolves the recorded hash. See [LOCAL_WEB_WALLET.md](LOCAL_WEB_WALLET.md)
+for custody, installation and limits, and [READINESS_NEXT_SIX.md](READINESS_NEXT_SIX.md)
+for remaining product work. This is not a standalone website signing wallet or
+completion of every production-readiness area.
+
 # MeepCoin deployed invitation checkpoint
 
 The six-step deployed desktop invitation rehearsal is complete. Windows Chrome and
