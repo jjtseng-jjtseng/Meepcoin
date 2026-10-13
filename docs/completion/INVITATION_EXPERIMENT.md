@@ -13,12 +13,12 @@ Returning to the tab never resumes it. Keep the browser window visible and stop 
 the computer becomes uncomfortable or other work slows down. Background mining
 and mobile phones are outside this experiment.
 
-Desktop Windows Chrome is the initial supported participant platform. Linux
-Firefox and Mac Chrome have frozen-hash qualification, with their recorded memory
-limits. Safari has real hash and lifecycle checks but is not advertised for native
-reward mining until its visible-window native-block qualification passes. Full
-Windows/macOS native node and wallet distributions are separate work. The native
-review package is Debian 13 ARM64.
+Desktop Windows Chrome and Mac Safari 26.6.2 have completed actual visible-browser
+native block submissions through the public mining hostname. Safari must report a
+visible document; its earlier hidden-window failures remain preserved. Linux
+Firefox and Mac Chrome have separate frozen-hash qualification with their recorded
+memory limits. Full Windows/macOS native node and wallet distributions are separate
+work. The native review package is Debian 13 ARM64.
 
 The network needs approximately 0.5 aggregate hashes/second for its studied startup
 assumption. This is an expectation, not an uptime or block-time guarantee. Blocks
@@ -62,3 +62,8 @@ Localhost TLS and SSH tunnels are labelled local rehearsal, never public endpoin
 qualification. Invitations remain private until those checks and the recorded
 exposure review pass. The user's instruction to complete deployment authorizes
 the engineering work; missing checks still prevent a pass claim.
+
+The deployed six-step rehearsal has now passed on the final package and ended.
+See [LAUNCH_DECISION.md](LAUNCH_DECISION.md) for its pinned identity and scope.
+Mining services are stopped after expiry; a later participant session needs a new
+announced launch packet and private invitations.
