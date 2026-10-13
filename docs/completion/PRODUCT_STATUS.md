@@ -1,5 +1,18 @@
 # MeepCoin integrated participant checkpoint - October 13, 2026
 
+The final October 13 runtime receipt is
+`wallet/QUALIFICATION_FINAL_20261013.json`. The published tree now includes the
+actual private and HTTPS gateway implementations, all browser mining imports
+and the exact pinned Wasm. The installed participant node starter passes real
+native identity/start/deadline/cold-reopen/refusal and private loopback peer
+tests. It complements the wallet launcher; it does not create participant SSH
+accounts or revive the expired public epoch. The corrected Chromium check waits
+for the completed persisted submission screen, then independently reconciles
+the exact native pool entry, fee and canonical transfer. All owned processes
+stopped. The Pi retained its 1,536-MiB sampled RSS budget; x64 CI explicitly uses
+2,048 MiB. Neither number claims a kernel memory ceiling. Read the final source
+commit's own GitHub Actions result separately; source receipts do not predict CI.
+
 MeepCoin has a working experimental browser mining and native wallet path. It
 is not ready for an unrestricted public launch. The previous finite desktop
 invitation deployment stopped and expired; no public epoch was restarted here.

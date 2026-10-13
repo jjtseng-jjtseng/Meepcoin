@@ -28,10 +28,51 @@ packaging, macOS random-loopback binding, mobile and browser endurance remain
 unqualified.
 
 Use Python 3.11 or later. No Python package installation is needed. Start the
-node separately using the exact announced release, fresh network and private
-peer configuration; its RPC must listen on numeric loopback. The earlier
-qualification and deployment epochs have expired. This command does not start
-or revive a public testnet.
+node using the exact announced release, fresh network and private peer
+configuration; its RPC must listen on numeric loopback. The earlier
+qualification and deployment epochs have expired. These commands do not revive
+an expired public experiment.
+
+The participant node starter verifies the complete installed release, binds a
+private persistent data directory to its native binary/network/genesis, and
+starts the daemon without public RPC or inbound peers. It requires an explicit
+mode. For a participant, the operator first supplies an authenticated, restricted
+private peer connection, such as an SSH forward on `127.0.0.1:49080`. That SSH
+account must permit only the intended native peer destination; a general operator
+login is not a participant credential. This program does not create SSH accounts,
+change firewalls or authenticate the remote forwarding service.
+
+Run the node in the first terminal, with CPU/task/deadline limits:
+
+```sh
+systemd-run --user --wait --pipe --collect \
+  --unit=meepcoin-participant-node \
+  --property=CPUQuota=100% --property=TasksMax=128 --property=Nice=10 \
+  --property=RuntimeMaxSec=3700 --property=KillMode=control-group \
+  --property=TimeoutStopSec=40 \
+  python3 /absolute/source/wallet/node.py \
+  --release /absolute/release --data-dir /absolute/private/meep-node \
+  --rpc-port 49081 --peer-port 49080 --seconds 1800
+```
+
+Wait for `PARTICIPANT_LOCAL_NODE_READY`. The helper checks the actual native
+version/network/genesis before printing that status. Use `--offline` in place
+of `--peer-port` only for a local readback; it does not synchronize, mine or make
+a public experiment available. Do not use an old qualification package to start
+a new invitation epoch.
+
+The node stops at its deadline or on Ctrl+C, preserves its database, and records
+owned-process cleanup in its private `node-session-*/STOPPED.json`. It does not
+restart automatically. A different release identity, an unbound existing data
+directory, or an occupied RPC port is refused. The process has a two-GiB virtual
+address-space limit, a 128-MiB per-file limit and no core dumps. Those finite
+preview limits are not a long-running production storage policy. Native RPC is
+unauthenticated loopback on the participant's computer, never a public port.
+
+In a second terminal, start the wallet after the node is ready. Keep the private
+peer connection and node running while using it. Node/connection failure will
+prevent refresh or send; it is not a reason to delete a wallet or resend an
+uncertain transaction.
 
 The recommended launcher derives the network identity from the installed release
 and verifies its complete checksum list before contacting the local node:
@@ -159,3 +200,11 @@ the wallet-switch test also verifies that a previous wallet's recipient and amou
 are cleared. An earlier Chrome-extension navigation block does not qualify or
 disqualify ordinary Chrome wallet use. Safari wallet use and full Windows/macOS
 native installations remain unqualified.
+
+The participant node starter additionally passed real Debian 13 ARM64 native
+checks for deadline, stop, cold reopening, identity mismatch, unbound data and
+occupied-port refusal. Two real private loopback daemons completed a native peer
+handshake; the wallet launcher accepted the connected participant node and repeat
+stop signals left its native group empty. This used the expired qualification
+package only for isolated genesis readback, with no mining or public exposure.
+It does not qualify an actual participant SSH account or a fresh public epoch.

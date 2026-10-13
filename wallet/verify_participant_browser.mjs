@@ -136,7 +136,12 @@ try {
   assert(toAtomic(await page.locator('#review-amount').textContent()) === '100000000000');
   assert(toAtomic(await page.locator('#review-total').textContent()) === (100000000000n + BigInt(fee)).toString());
   await page.getByRole('button', {name: 'Confirm and send', exact: true}).click();
-  await page.waitForFunction(() => /Submitted.*[0-9a-f]{64}/.test(document.getElementById('send-result').textContent));
+  // The confirmation response is immediately replaced by the persisted state
+  // render. Wait for that completed render, not the transient "Submitted" text.
+  // The native controller independently requires the exact hash in the pool.
+  await page.waitForFunction(() => /^Last send: submitted\. Transaction: [0-9a-f]{64}\./.test(
+    document.getElementById('send-result').textContent) && !document.getElementById('refresh').disabled,
+    null, {timeout: 45000});
   const txHash = (await page.locator('#send-result').textContent()).match(/[0-9a-f]{64}/)[0];
   await save('SENT.json', {txHash, amountAtomic: '100000000000', feeAtomic: fee});
   const confirmed = await waitFile('CONFIRMED.json');
