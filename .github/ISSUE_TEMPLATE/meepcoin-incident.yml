@@ -1,0 +1,31 @@
+name: MeepCoin experiment incident
+description: Report a non-secret problem with the invitation mining experiment.
+title: "[MeepCoin incident] "
+body:
+  - type: markdown
+    attributes:
+      value: "Stop mining if it behaves unexpectedly. Never paste an invitation URL, session token, seed, password, wallet file, or database. This tracker is public and has no guaranteed response time."
+  - type: input
+    id: release
+    attributes:
+      label: Public release identifier
+      description: Use the published release ID or say unknown. No invitation credentials.
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and operating system
+    validations:
+      required: true
+  - type: input
+    id: time
+    attributes:
+      label: Approximate UTC time
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened and did Stop work?
+      description: Include expected behavior, observed behavior, and any non-secret error text.
+    validations:
+      required: true
