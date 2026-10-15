@@ -15,6 +15,7 @@ from pathlib import Path
 import platform
 import re
 import sys
+sys.dont_write_bytecode = True
 
 spec = importlib.util.spec_from_file_location('companion', Path(__file__).with_name('companion.py'))
 c = importlib.util.module_from_spec(spec)
@@ -22,15 +23,22 @@ spec.loader.exec_module(c)
 
 
 def verify_release(directory):
+    if sys.version_info < (3, 11):
+        raise ValueError('Python 3.11 or later is required; choose the documented runtime for this platform.')
     root = directory.resolve(strict=True)
     manifest = json.loads((root / 'MANIFEST.json').read_text())
-    if manifest.get('platform') != 'Debian 13 ARM64' or manifest.get('network') != 'testnet17':
-        raise ValueError('Only the qualified Debian 13 ARM64 v17 release is supported by this launcher.')
-    if platform.system() != 'Linux' or platform.machine() not in ('aarch64', 'arm64'):
-        raise ValueError('This native release needs Linux ARM64. Windows/macOS native packages are not qualified.')
-    os_release = platform.freedesktop_os_release()
-    if os_release.get('ID') != 'debian' or os_release.get('VERSION_ID') != '13':
-        raise ValueError('This packaged release is qualified on Debian 13 only.')
+    if manifest.get('network') != 'testnet17' or platform.machine() not in ('aarch64', 'arm64'):
+        raise ValueError('This participant release requires ARM64 and the pinned testnet17 network.')
+    target = manifest.get('platform')
+    if target == 'Debian 13 ARM64' and platform.system() == 'Linux':
+        os_release = platform.freedesktop_os_release()
+        if os_release.get('ID') != 'debian' or os_release.get('VERSION_ID') != '13':
+            raise ValueError('This packaged release requires Debian 13.')
+    elif target == 'macOS 26 ARM64' and platform.system() == 'Darwin':
+        if platform.mac_ver()[0].split('.')[0] != '26':
+            raise ValueError('This packaged release requires macOS 26 ARM64.')
+    else:
+        raise ValueError('Release platform does not match this participant computer.')
     if not c.HASH.fullmatch(manifest.get('genesisHash', '')):
         raise ValueError('Release genesis is invalid.')
     if not isinstance(manifest.get('nativeVersion'), str) or not manifest['nativeVersion']:
@@ -51,6 +59,9 @@ def verify_release(directory):
         if hasher.hexdigest() != digest:
             raise ValueError('Installed release file failed its checksum: ' + relative)
         checked.add(relative)
+    actual = {p.relative_to(root).as_posix() for p in root.rglob('*') if p.is_file() and p.relative_to(root).as_posix() != 'SHA256SUMS'}
+    if checked != actual:
+        raise ValueError('Installed release contains unlisted or missing files.')
     required = {'MANIFEST.json', 'bin/meepcoin-wallet-rpc', 'libexec/meepcoin-wallet-rpc'}
     if not required <= checked:
         raise ValueError('Release checksum list does not cover the wallet or manifest.')

@@ -10,13 +10,16 @@ import hashlib
 import importlib.util
 import json
 import os
+import platform
 from pathlib import Path
 import secrets
 import signal
 import socket
 import stat
 import subprocess
+import sys
 import time
+sys.dont_write_bytecode = True
 
 spec = importlib.util.spec_from_file_location('wallet_launch', Path(__file__).with_name('launch.py'))
 launch = importlib.util.module_from_spec(spec)
@@ -45,6 +48,7 @@ def main():
             raise ValueError('Release checksum list must cover the native node and its wrapper.')
     # Refuse an already occupied RPC port before creating any persistent files.
     with socket.socket() as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         probe.bind(('127.0.0.1', args.rpc_port))
     original = args.data_dir.absolute()
     if original.is_symlink():
@@ -92,7 +96,8 @@ def main():
     def limits():
         import resource
         os.nice(10)
-        resource.setrlimit(resource.RLIMIT_AS, (2 * 1024**3,) * 2)
+        if platform.system() == 'Linux':
+            resource.setrlimit(resource.RLIMIT_AS, (2 * 1024**3,) * 2)
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
         resource.setrlimit(resource.RLIMIT_FSIZE, (128 * 1024**2,) * 2)
         resource.setrlimit(resource.RLIMIT_CPU, (args.seconds + 30,) * 2)

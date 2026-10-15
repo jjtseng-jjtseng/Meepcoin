@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("companion", Path(__file__).with_name("companion.py"))
 c = importlib.util.module_from_spec(spec)
@@ -222,7 +223,7 @@ class HTTPTests(unittest.TestCase):
     def request(self, path, data=None, headers=None, method="POST"):
         connection = http.client.HTTPConnection(self.server.server_address[0], self.server.server_port, timeout=3)
         body = json.dumps(data if data is not None else {}).encode()
-        defaults = {"Origin": self.server.origin, "Content-Type": "application/json",
+        defaults = {"Host": self.server.origin[7:], "Origin": self.server.origin, "Content-Type": "application/json",
                     "Cookie": self.cookie, "X-Meep-CSRF": self.csrf}
         defaults.update(headers or {})
         connection.request(method, path, body=body if method == "POST" else None, headers=defaults)
@@ -268,6 +269,16 @@ class HTTPTests(unittest.TestCase):
         self.session()
         self.server.created -= 3601
         self.assertEqual(self.request("/api/state")[0], 403)
+
+    def test_adjacent_local_service_host_cannot_use_wallet_session(self):
+        self.session()
+        self.assertEqual(self.request("/api/state", headers={"Host": "127.0.0.1:" + str(self.server.server_port)})[0], 403)
+
+    def test_reserved_hostname_rejects_non_loopback_resolution(self):
+        answers = [(2, 1, 6, '', ('192.168.68.84', 0))]
+        with mock.patch.object(c.socket, 'getaddrinfo', return_value=answers):
+            with self.assertRaisesRegex(ValueError, 'exclusively to loopback'):
+                c.Server(self.server.wallet, host='meep-' + 'a' * 32 + '.localhost')
 
     def test_busy_operation_and_request_limit(self):
         self.session()

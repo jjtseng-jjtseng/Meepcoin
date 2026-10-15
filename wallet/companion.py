@@ -13,6 +13,7 @@ import http.server
 import ipaddress
 import json
 import os
+import platform
 from pathlib import Path
 import re
 import secrets
@@ -398,10 +399,21 @@ class Server(http.server.ThreadingHTTPServer):
         self.slots = threading.BoundedSemaphore(8)
         # Cookies have no port isolation. Give this local app a separate host
         # cookie jar instead of sharing credentials with every 127.0.0.1 app.
+        if host is None and platform.system() == "Darwin":
+            # macOS does not bind arbitrary 127/8 addresses without an admin alias.
+            # A unique reserved localhost name preserves host-only cookie isolation.
+            host = "meep-" + secrets.token_hex(16) + ".localhost"
         host = host or f"127.77.{secrets.randbelow(254)+1}.{secrets.randbelow(254)+1}"
-        if not ipaddress.ip_address(host).is_loopback:
-            raise ValueError("Only a numeric loopback host is allowed")
-        super().__init__((host, port), Handler)
+        if re.fullmatch(r"meep-[0-9a-f]{32}\.localhost", host):
+            addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+            if not addresses or any(not ipaddress.ip_address(row[4][0]).is_loopback for row in addresses):
+                raise ValueError("Reserved wallet hostname must resolve exclusively to loopback")
+            bind_host = "127.0.0.1"
+        else:
+            if not ipaddress.ip_address(host).is_loopback:
+                raise ValueError("Only loopback wallet hosts are allowed")
+            bind_host = host
+        super().__init__((bind_host, port), Handler)
         self.origin = f"http://{host}:{self.server_port}"
         self.cookie_name = "meep_local_" + str(self.server_port)
         self.assets = {route: ((Path(__file__).parent / "web" / filename).read_bytes(), mime)
@@ -572,7 +584,7 @@ def main():
     parser.add_argument("--genesis", required=True)
     parser.add_argument("--network", choices=("testnet", "regtest"), default="testnet")
     parser.add_argument("--port", type=int, default=0)
-    parser.add_argument("--host", help="Numeric loopback host; default is a random dedicated loopback address")
+    parser.add_argument("--host", help="Loopback host; defaults to an isolated numeric host or unique macOS localhost name")
     parser.add_argument("--seconds", type=int, default=1800)
     args = parser.parse_args()
     if not 60 <= args.seconds <= 3600 or not 1 <= args.daemon_port <= 65535 or not 0 <= args.port <= 65535:
@@ -605,7 +617,11 @@ def main():
     def resource_limits():
         import resource
         os.nice(10)
-        resource.setrlimit(resource.RLIMIT_AS, (2 * 1024**3, 2 * 1024**3))
+        if platform.system() == "Linux":
+            resource.setrlimit(resource.RLIMIT_AS, (2 * 1024**3, 2 * 1024**3))
+        # Darwin rejects RLIMIT_AS and reserves large virtual regions. CPU, file,
+        # core and session limits still apply; actual RSS is qualified separately.
+        resource.setrlimit(resource.RLIMIT_CPU, (args.seconds + 30,) * 2)
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
         resource.setrlimit(resource.RLIMIT_FSIZE, (128 * 1024**2, 128 * 1024**2))
     child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,

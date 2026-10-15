@@ -1,0 +1,622 @@
+{
+  "schema": "meepcoin-participant-installation-qualification/1",
+  "date": "2026-10-15",
+  "status": "ALL_13_OWNER_LAN_INSTALLATION_REQUIREMENTS_PASS",
+  "scope": "Two owner-operated ARM64 desktop participants on the home LAN, finite private v17 qualification. Archived release; invitations expired and services stopped.",
+  "releaseVersion": "0.1.0-participant.2",
+  "nativeSourceCommit": "4849c54c1bec27414290c4815c30d1e4ee98e3f0",
+  "packagedWalletSourceCommit": "675381d129b8ae12fe1b16e6771eacc20dbbfdfa",
+  "genesisHash": "e07bde6f629fecb01fd8bfc115f6d88112a6ea9c14312a8286c068e3ebc57782",
+  "genesisUtcUnix": 1792093877,
+  "publisherFingerprint": "SHA256:eSYZj5YQKK0qWiprSlEBj3eH3dT66DjdaAQ6bGDEqjI",
+  "requirements": [
+    {
+      "id": 1,
+      "requirement": "Actual participant computer",
+      "status": "PASS",
+      "pi": "PASS",
+      "mac": "PASS",
+      "evidence": "HOST_QUALIFICATION.json",
+      "observed": "OS, CPU architecture, browser, Python, RAM and free storage observed on both devices"
+    },
+    {
+      "id": 2,
+      "requirement": "Supported installation platform",
+      "status": "PASS",
+      "pi": "PASS",
+      "mac": "PASS",
+      "evidence": "installed-2/MANIFEST.json",
+      "observed": "Both complete relocated native packages loaded their three programs and ran actual local nodes/wallets"
+    },
+    {
+      "id": 3,
+      "requirement": "Exact release identity",
+      "status": "PASS",
+      "pi": "PASS",
+      "mac": "PASS",
+      "evidence": "NETWORK.json",
+      "observed": "Both native genesis readbacks match the pinned v17 manifest and native version"
+    },
+    {
+      "id": 4,
+      "requirement": "Authenticated download and verification",
+      "status": "PASS",
+      "pi": "PASS",
+      "mac": "PASS",
+      "evidence": "installed-2-INSTALL.json",
+      "observed": "Publisher signature, archive bytes/SHA-256 and all 85 installed file entries verified; malformed fixtures rejected"
+    },
+    {
+      "id": 5,
+      "requirement": "Installation prerequisites",
+      "status": "PASS",
+      "pi": "PASS",
+      "mac": "PASS",
+      "evidence": "upgrade-rehearsal/release-preflight.log",
+      "observed": "Native libraries bundled; standard-library Python; Mac system Python 3.9 refused; no participant compiler required"
+    },
+    {
+      "id": 6,
+      "requirement": "Private account folders and storage",
+      "status": "PASS",
+      "pi": "PASS",
+      "mac": "PASS",
+      "evidence": "HOST_QUALIFICATION.json",
+      "observed": "Owner-only directories and keys verified; measured native RSS and finite resource guards"
+    },
+    {
+      "id": 7,
+      "requirement": "LAN route and server identity",
+      "status": "PASS",
+      "pi": "PASS",
+      "mac": "PASS",
+      "evidence": "ACCESS_BOUNDARIES.json",
+      "observed": "Both private peer tunnels connected using pinned SSH server keys; incorrect server key refused"
+    },
+    {
+      "id": 8,
+      "requirement": "Individual restricted revocable access",
+      "status": "PASS",
+      "pi": "PASS",
+      "mac": "PASS",
+      "evidence": "ACCESS_BOUNDARIES.json",
+      "observed": "Distinct keys, shell/RPC/other target/remote forwarding and cross-participant key refusals; actual expiry and active-client cgroup revocation"
+    },
+    {
+      "id": 9,
+      "requirement": "Local node and wallet connection",
+      "status": "PASS",
+      "pi": "PASS",
+      "mac": "PASS",
+      "evidence": "upgrade-rehearsal/status.log",
+      "observed": "Both synchronized over approved private peer; native RPC inaccessible from other LAN machine; occupied port refused"
+    },
+    {
+      "id": 10,
+      "requirement": "Start status stop and restart",
+      "status": "PASS",
+      "pi": "PASS",
+      "mac": "PASS",
+      "evidence": "UPGRADE_REMOVAL.json",
+      "observed": "Real manual stop, same-database restart, peer outage cleanup and one-minute deadline; two native groups empty"
+    },
+    {
+      "id": 11,
+      "requirement": "Wallet onboarding and recovery",
+      "status": "PASS",
+      "pi": "PASS",
+      "mac": "PASS",
+      "evidence": "upgrade-rehearsal/BROWSER_INSTALLATION.json",
+      "observed": "Actual browser forms create encrypted wallets, confirm/clear backup, lock/unlock, refuse wrong password and restore separate same-address wallet"
+    },
+    {
+      "id": 12,
+      "requirement": "Upgrade and removal",
+      "status": "PASS",
+      "pi": "PASS",
+      "mac": "PASS",
+      "evidence": "UPGRADE_REMOVAL.json",
+      "observed": "Same encrypted wallet unlocks after compatible update; selecting update and removing old application preserve wallet/chain bytes; incompatible update refused"
+    },
+    {
+      "id": 13,
+      "requirement": "Evidence and installation guide",
+      "status": "PASS",
+      "pi": "PASS",
+      "mac": "PASS",
+      "evidence": "RECEIPT_INVENTORY.json",
+      "observed": "Separate Pi/Mac actual installs, individually hashed non-secret receipts and observed installation guide"
+    }
+  ],
+  "devices": {
+    "pi": {
+      "platform": "Debian 13 ARM64",
+      "os": "Linux-6.18.39+rpt-rpi-2712-aarch64-with-glibc2.41",
+      "architecture": "aarch64",
+      "cpuCount": 4,
+      "memoryBytes": 8454029312,
+      "freeBytesAtQualification": 212262662144,
+      "browser": "Chromium 151.0.7922.173 built on Debian GNU/Linux 13 (trixie)",
+      "participantPython": "3.13.5",
+      "signedInstall": {
+        "status": "SIGNED_PARTICIPANT_INSTALL_PASS",
+        "releaseVersion": "0.1.0-participant.2",
+        "archiveSha256": "f07503bb42218bc1ca09f0b7fa90241f8466dc0b59e0972f6aba823dce65b53a",
+        "publisherSignatureVerified": true,
+        "filesVerified": 85,
+        "walletOrDatabaseCreated": false
+      },
+      "walletBrowser": {
+        "status": "REAL_PARTICIPANT_WALLET_UI_PASS",
+        "platform": "linux",
+        "browser": "151.0.7922.173",
+        "mode": "headless isolated profile; browser sandbox enabled",
+        "encryptedNativeWalletCreated": true,
+        "backupConfirmedAndCleared": true,
+        "wrongPasswordRefused": true,
+        "lockAndUnlock": true,
+        "recoveryToSeparateWalletSameAddress": true,
+        "originalRemainsUsable": true,
+        "reloadLocksWallet": true,
+        "creatingOverExistingWalletRefused": true,
+        "oldWalletUnlockedAfterCompatibleUpgrade": true,
+        "hostOnlyCookieIsolatedFromAdjacentLoopback": true,
+        "nativeAndSessionLogsNoSeedOrPassword": true,
+        "secretsExported": false,
+        "miningOrTransfersTested": false,
+        "pageErrors": []
+      },
+      "deadlineStop": {
+        "status": "PARTICIPANT_STOPPED",
+        "reason": "deadline",
+        "controllerExitCodes": {
+          "wallet": 0,
+          "node": 0,
+          "peer": 0
+        },
+        "controllersExited": true,
+        "gracefulCleanup": true,
+        "walletAndDatabaseRetained": true,
+        "automaticRestart": false,
+        "ownedNativeGroupsEmpty": true,
+        "nativeGroupsChecked": 2,
+        "peakNativeRssKiB": 133248
+      },
+      "accessRefusals": [
+        {
+          "test": "shell",
+          "refused": true,
+          "exitCode": 255,
+          "reason": "open failed"
+        },
+        {
+          "test": "native-rpc-forward",
+          "refused": true,
+          "exitCode": 255,
+          "reason": "administratively prohibited"
+        },
+        {
+          "test": "other-host-forward",
+          "refused": true,
+          "exitCode": 255,
+          "reason": "administratively prohibited"
+        },
+        {
+          "test": "remote-listener",
+          "refused": true,
+          "exitCode": 255,
+          "reason": "remote port forwarding failed"
+        },
+        {
+          "test": "other-participant-key",
+          "refused": true,
+          "exitCode": 255,
+          "reason": "Permission denied"
+        },
+        {
+          "test": "wrong-server-identity",
+          "refused": true,
+          "exitCode": 255,
+          "reason": "Host key verification failed"
+        },
+        {
+          "test": "expired-invitation",
+          "refusedBeforeStartup": true,
+          "reason": "expired"
+        },
+        {
+          "test": "foreign-network",
+          "refusedBeforeStartup": true,
+          "reason": "another network"
+        },
+        {
+          "test": "native-rpc-not-lan-accessible",
+          "refused": true
+        }
+      ],
+      "installerRefusals": [
+        {
+          "test": "wrong-publisher",
+          "refused": true,
+          "reason": "signature did not verify",
+          "applicationPublished": false
+        },
+        {
+          "test": "corrupt-archive",
+          "refused": true,
+          "reason": "differs from the signed release",
+          "applicationPublished": false
+        },
+        {
+          "test": "path-traversal",
+          "refused": true,
+          "reason": "unsafe",
+          "applicationPublished": false
+        },
+        {
+          "test": "wrong-platform",
+          "refused": true,
+          "reason": "platform does not match",
+          "applicationPublished": false
+        },
+        {
+          "test": "existing-installation",
+          "refusedBeforeDownload": true,
+          "installedManifestUnchanged": true
+        }
+      ],
+      "dataRefusals": [
+        {
+          "test": "foreign-node-binding",
+          "refused": true,
+          "reason": "different release"
+        },
+        {
+          "test": "unbound-existing-data",
+          "refused": true,
+          "reason": "Unbound existing data"
+        },
+        {
+          "test": "occupied-rpc-port",
+          "refused": true,
+          "reason": "Address already in use"
+        },
+        {
+          "test": "incompatible-upgrade",
+          "refused": true,
+          "reason": "Incompatible network"
+        },
+        {
+          "test": "installed-file-corruption",
+          "refused": true,
+          "reason": "failed its checksum"
+        },
+        {
+          "test": "remove-data-overlap",
+          "refused": true,
+          "reason": "must be separate"
+        }
+      ],
+      "verifiedReceiptFiles": 59,
+      "receiptArchiveSha256": "45299b77b0708495caad8c0177f0b853d73759d63254ba26a3f394aa008a95e5"
+    },
+    "mac": {
+      "platform": "macOS 26 ARM64",
+      "os": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+      "architecture": "arm64",
+      "cpuCount": 10,
+      "memoryBytes": 17179869184,
+      "freeBytesAtQualification": 139010244608,
+      "browser": "Google Chrome 155.0.8059.79",
+      "participantPython": "3.14.3",
+      "signedInstall": {
+        "status": "SIGNED_PARTICIPANT_INSTALL_PASS",
+        "releaseVersion": "0.1.0-participant.2",
+        "archiveSha256": "78feb4eeec681a1009aa9974f3d41e22cbeac38dac815ccc5096b345d27e2461",
+        "publisherSignatureVerified": true,
+        "filesVerified": 85,
+        "walletOrDatabaseCreated": false
+      },
+      "walletBrowser": {
+        "status": "REAL_PARTICIPANT_WALLET_UI_PASS",
+        "platform": "darwin",
+        "browser": "155.0.8059.79",
+        "mode": "headless isolated profile; browser sandbox enabled",
+        "encryptedNativeWalletCreated": true,
+        "backupConfirmedAndCleared": true,
+        "wrongPasswordRefused": true,
+        "lockAndUnlock": true,
+        "recoveryToSeparateWalletSameAddress": true,
+        "originalRemainsUsable": true,
+        "reloadLocksWallet": true,
+        "creatingOverExistingWalletRefused": true,
+        "oldWalletUnlockedAfterCompatibleUpgrade": true,
+        "hostOnlyCookieIsolatedFromAdjacentLoopback": true,
+        "nativeAndSessionLogsNoSeedOrPassword": true,
+        "secretsExported": false,
+        "miningOrTransfersTested": false,
+        "pageErrors": []
+      },
+      "deadlineStop": {
+        "status": "PARTICIPANT_STOPPED",
+        "reason": "deadline",
+        "controllerExitCodes": {
+          "wallet": 0,
+          "node": 0,
+          "peer": 0
+        },
+        "controllersExited": true,
+        "gracefulCleanup": true,
+        "walletAndDatabaseRetained": true,
+        "automaticRestart": false,
+        "ownedNativeGroupsEmpty": true,
+        "nativeGroupsChecked": 2,
+        "peakNativeRssKiB": 117168
+      },
+      "accessRefusals": [
+        {
+          "test": "shell",
+          "refused": true,
+          "exitCode": 255,
+          "reason": "open failed"
+        },
+        {
+          "test": "native-rpc-forward",
+          "refused": true,
+          "exitCode": 255,
+          "reason": "administratively prohibited"
+        },
+        {
+          "test": "other-host-forward",
+          "refused": true,
+          "exitCode": 255,
+          "reason": "administratively prohibited"
+        },
+        {
+          "test": "remote-listener",
+          "refused": true,
+          "exitCode": 255,
+          "reason": "remote port forwarding failed"
+        },
+        {
+          "test": "other-participant-key",
+          "refused": true,
+          "exitCode": 255,
+          "reason": "Permission denied"
+        },
+        {
+          "test": "wrong-server-identity",
+          "refused": true,
+          "exitCode": 255,
+          "reason": "Host key verification failed"
+        },
+        {
+          "test": "expired-invitation",
+          "refusedBeforeStartup": true,
+          "reason": "expired"
+        },
+        {
+          "test": "foreign-network",
+          "refusedBeforeStartup": true,
+          "reason": "another network"
+        },
+        {
+          "test": "native-rpc-not-lan-accessible",
+          "refused": true
+        }
+      ],
+      "installerRefusals": [
+        {
+          "test": "wrong-publisher",
+          "refused": true,
+          "reason": "signature did not verify",
+          "applicationPublished": false
+        },
+        {
+          "test": "corrupt-archive",
+          "refused": true,
+          "reason": "differs from the signed release",
+          "applicationPublished": false
+        },
+        {
+          "test": "path-traversal",
+          "refused": true,
+          "reason": "unsafe",
+          "applicationPublished": false
+        },
+        {
+          "test": "wrong-platform",
+          "refused": true,
+          "reason": "platform does not match",
+          "applicationPublished": false
+        },
+        {
+          "test": "existing-installation",
+          "refusedBeforeDownload": true,
+          "installedManifestUnchanged": true
+        }
+      ],
+      "dataRefusals": [
+        {
+          "test": "foreign-node-binding",
+          "refused": true,
+          "reason": "different release"
+        },
+        {
+          "test": "unbound-existing-data",
+          "refused": true,
+          "reason": "Unbound existing data"
+        },
+        {
+          "test": "occupied-rpc-port",
+          "refused": true,
+          "reason": "Address already in use"
+        },
+        {
+          "test": "incompatible-upgrade",
+          "refused": true,
+          "reason": "Incompatible network"
+        },
+        {
+          "test": "installed-file-corruption",
+          "refused": true,
+          "reason": "failed its checksum"
+        },
+        {
+          "test": "remove-data-overlap",
+          "refused": true,
+          "reason": "must be separate"
+        },
+        {
+          "test": "actual-mac-system-python-3.9",
+          "refusedBeforeInstallation": true,
+          "reason": "Python 3.11 or later"
+        }
+      ],
+      "verifiedReceiptFiles": 49,
+      "receiptArchiveSha256": "2b476c49ff8c10d261477e8a3a4783a9d5dd4c2e4d2d034a4d94cf3b5d205f51"
+    }
+  },
+  "revocation": {
+    "pi": {
+      "label": "pi",
+      "exitCode": 0,
+      "ownedGroupEmpty": true,
+      "unit": "meepcoin-peer-pi-20261015-v4",
+      "ownedCgroupEmpty": true,
+      "activeConnectionsRevoked": true,
+      "listenerRevoked": true,
+      "stopExitCode": 0
+    },
+    "mac": {
+      "label": "mac",
+      "exitCode": 0,
+      "ownedGroupEmpty": true,
+      "unit": "meepcoin-peer-mac-20261015-v4",
+      "ownedCgroupEmpty": true,
+      "activeConnectionsRevoked": true,
+      "listenerRevoked": true,
+      "stopExitCode": 0
+    },
+    "otherParticipantStillConnected": true,
+    "actualKeyUtcExpiry": {
+      "status": "REAL_SSH_PARTICIPANT_KEY_EXPIRY_PASS",
+      "acceptedBeforeExpiryButShellRefused": true,
+      "sameKeyRefusedAfterActualUtcExpiry": true,
+      "expiryUtc": 1792096303,
+      "existingParticipantServicesChanged": false
+    },
+    "startupReviewFix": {
+      "status": "PEER_SERVICE_REVIEW_FIX_REAL_RUNTIME_PASS",
+      "startupDeadlineWithRealSshd": true,
+      "failedStartupCgroupVerifiedEmpty": true,
+      "startupSystemdRunChildReaped": true,
+      "normalStartAndCgroupStopPass": true,
+      "priorAttemptLogPreservedWithExplicitRetryMessage": true,
+      "nativeNodeOrWalletStarted": false
+    },
+    "failedEarlierAttempt": "v3 listener/PGID stop left authenticated sshd-session children alive. Retained as failed, superseded by independently observed v4 per-participant cgroup drain."
+  },
+  "cleanup": {
+    "pi": {
+      "status": "OWNED_PARTICIPANT_AND_OPERATOR_LISTENERS_CLOSED",
+      "downloadServerPidsStopped": [
+        91048,
+        91961,
+        92661
+      ],
+      "ports": [
+        {
+          "port": 49080,
+          "closed": true
+        },
+        {
+          "port": 49081,
+          "closed": true
+        },
+        {
+          "port": 49180,
+          "closed": true
+        },
+        {
+          "port": 49181,
+          "closed": true
+        },
+        {
+          "port": 49280,
+          "closed": true
+        },
+        {
+          "port": 49281,
+          "closed": true
+        },
+        {
+          "port": 49422,
+          "closed": true
+        },
+        {
+          "port": 49423,
+          "closed": true
+        },
+        {
+          "port": 49424,
+          "closed": true
+        },
+        {
+          "port": 49425,
+          "closed": true
+        },
+        {
+          "port": 49427,
+          "closed": true
+        },
+        {
+          "port": 49428,
+          "closed": true
+        }
+      ],
+      "unrelatedServicesChanged": false
+    },
+    "mac": {
+      "status": "OWNED_PARTICIPANT_LISTENERS_CLOSED",
+      "ports": [
+        {
+          "port": 49080,
+          "closed": true
+        },
+        {
+          "port": 49081,
+          "closed": true
+        },
+        {
+          "port": 49180,
+          "closed": true
+        },
+        {
+          "port": 49181,
+          "closed": true
+        }
+      ],
+      "walletPrivateLinkAndRpcPasswordFilesRemoved": true,
+      "unrelatedServicesChanged": false
+    }
+  },
+  "guide": "docs/completion/PARTICIPANT_INSTALLATION.md",
+  "independentReview": "Claude text-only review; findings independently checked and timeout cleanup fixed/tested. Not an independent human audit.",
+  "unqualified": [
+    "Safari wallet (automation window hidden; safeguard intact)",
+    "Windows native package",
+    "Intel Mac or other Linux distribution",
+    "mobile and sustained heat/battery",
+    "outside-home participant route and public enrollment",
+    "new public HTTPS deployment journey",
+    "mining/reward/payment in this installation run (separate historical evidence only)",
+    "power-loss/SIGKILL recovery",
+    "independent human cryptography/security review",
+    "unrestricted public testnet/mainnet"
+  ],
+  "publicLaunchApproved": false,
+  "keysRecoveryWordsPasswordsExported": false,
+  "unrelatedWorkloadsChanged": false,
+  "automaticRestartOrFollowupCreated": false
+}
