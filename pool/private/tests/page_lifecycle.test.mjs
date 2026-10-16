@@ -29,7 +29,9 @@ test('Out-of-order old start cannot overwrite the live generation used by Stop',
 });
 test('Operational outage stops work; recovery never automatically starts a worker',async()=>{
  const p=page();await flush();p.click('start');p.requests.at(-1).resolve(job(1));await flush();
- p.status({availability:{ready:false,reason:'chain_stalled'}});p.poll();await flush();
+ // Keep the native generation coherent so this specifically exercises the
+ // operational stall branch, rather than the separate run-cancellation branch.
+ p.status({running:true,generation:1,availability:{ready:false,reason:'chain_stalled'}});p.poll();await flush();
  assert.equal(p.window.meepPrivate.workerCount,0);assert.equal(p.workers[0].terminated,true);
  assert.match(p.element('availability').textContent,/chain_stalled/);
  const count=p.requests.length;p.status({availability:{ready:true,lastBlockAgeSeconds:0}});p.poll();await flush();
