@@ -39,6 +39,7 @@
 
 #include "hardforks.h"
 #include "cryptonote_config.h"
+#include "meepcoin_testnet17_genesis.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "blockchain.hardforks"

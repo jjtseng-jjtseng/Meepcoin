@@ -1,3 +1,15 @@
+# Current checkpoint - October 16, 2026
+
+The latest release and empirical scope are recorded in
+[REHEARSAL_RESULTS_20261016.md](REHEARSAL_RESULTS_20261016.md) and
+[OWNER_REHEARSAL_20261015.md](OWNER_REHEARSAL_20261015.md). The historical
+checkpoints below retain their original identities and limitations. The fresh
+network has a fixed 05:39:28 UTC expiry; a broader public launch remains gated
+by independent human review. Consult the final closure/review receipt for
+terminal status, rather than treating historical success as current service uptime.
+
+---
+
 # Deployed v17 invitation testnet decision
 
 Recorded October 13, 2026 UTC (October 12 local). The six requested deployment steps are complete for a finite desktop invitation experiment. The final deployed rehearsal passed and ended automatically. Its services are stopped; no participant invitations were publicly distributed.

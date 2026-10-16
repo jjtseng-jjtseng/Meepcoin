@@ -1,5 +1,15 @@
 # Local browser wallet companion
 
+October 15 update: signed native participant packages and the local wallet have
+now passed installation, onboarding/recovery, private peer access, compatible
+upgrade and cleanup on Debian 13 ARM64 with Chromium and macOS 26 ARM64 with
+Chrome. Use [PARTICIPANT_INSTALLATION.md](PARTICIPANT_INSTALLATION.md) for the
+current integrated flow, exact release and limits. The manual Linux instructions
+below preserve the earlier separate-node workflow. Statements below that macOS
+packaging remained unqualified describe that earlier checkpoint. Safari wallet
+use, Windows native distribution and mobile remain unqualified. All October 15
+qualification invitations expired and temporary services stopped.
+
 MeepCoin can have a browser wallet without placing spending keys on the mining
 server. The first implementation is `wallet/companion.py`: a single-user browser
 interface backed by the existing native wallet on that same user's computer.

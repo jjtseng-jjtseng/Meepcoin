@@ -13,6 +13,7 @@ import http.server
 import ipaddress
 import json
 import os
+import platform
 from pathlib import Path
 import re
 import secrets
@@ -24,6 +25,9 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import sys
+sys.dont_write_bytecode = True
+import guarded
 
 ATOMIC = 100_000_000_000
 MAX_AMOUNT = (1 << 64) - 1
@@ -70,12 +74,14 @@ class RPC:
             self.auth = urllib.request.HTTPDigestAuthHandler(manager)
 
     def __call__(self, method, params=None):
-        payload = json.dumps({"jsonrpc": "2.0", "id": "local-wallet", "method": method, "params": params or {}}).encode()
-        request = urllib.request.Request(self.url, data=payload, headers={"Content-Type": "application/json"})
+        path = '/get_transactions' if method == 'get_transactions' else '/json_rpc'
+        payload = json.dumps(params or {} if path != '/json_rpc' else
+                             {"jsonrpc": "2.0", "id": "local-wallet", "method": method, "params": params or {}}).encode()
+        request = urllib.request.Request(f'http://127.0.0.1:{self.port}'+path, data=payload, headers={"Content-Type": "application/json"})
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=90)
         try:
             headers = {"Content-Type": "application/json"}
-            connection.request("POST", "/json_rpc", payload, headers)
+            connection.request("POST", path, payload, headers)
             response = connection.getresponse()
             raw = response.read(4 * 1024 * 1024 + 1)
             if response.status == 401 and self.auth:
@@ -92,7 +98,7 @@ class RPC:
                     raise WalletError("Native Digest authentication required.", 502)
                 parsed = urllib.request.parse_keqv_list(urllib.request.parse_http_list(fields))
                 headers["Authorization"] = "Digest " + self.auth.get_authorization(request, parsed)
-                connection.request("POST", "/json_rpc", payload, headers)
+                connection.request("POST", path, payload, headers)
                 response = connection.getresponse()
                 raw = response.read(4 * 1024 * 1024 + 1)
             if response.status != 200:
@@ -107,6 +113,10 @@ class RPC:
         if "error" in result:
             # Native errors can echo input, including a seed or password. Never forward them.
             raise WalletError(f"Native operation rejected (code {int(result['error'].get('code', -1))}).")
+        if path == '/get_transactions':
+            if not isinstance(result, dict) or result.get('status') != 'OK':
+                raise WalletError('Native transaction lookup unavailable.', 503)
+            return result
         if not isinstance(result.get("result"), dict):
             raise WalletError("Invalid native response.", 502)
         return result["result"]
@@ -148,8 +158,21 @@ class Wallet:
             raise WalletError("Symlink payment record refused.")
         if not path.exists():
             return None
-        record = json.loads(path.read_text())
-        if record.get("wallet") != self.open_name or not HASH.fullmatch(record.get("txHash", "")):
+        try:
+            record = json.loads(path.read_text())
+            valid = (isinstance(record, dict) and record.get("wallet") == self.open_name
+                     and HASH.fullmatch(record.get("txHash", ""))
+                     and type(record.get("observed")) is bool
+                     and record.get("status") in ("relaying", "submitted", "unknown", "out", "pending", "failed")
+                     and (not record["observed"] or record["status"] in ("out", "pending", "failed"))
+                     and isinstance(record.get("address"), str) and re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{95,106}", record["address"])
+                     and all(isinstance(record.get(k), str) and re.fullmatch(r"[1-9][0-9]{0,19}", record[k])
+                             and int(record[k]) < 2**64 for k in ("amountAtomic", "totalAtomic"))
+                     and int(record["totalAtomic"]) > int(record["amountAtomic"])
+                     and record.get("genesis", self.genesis) == self.genesis)
+        except (ValueError, TypeError, KeyError):
+            valid = False
+        if not valid:
             raise WalletError("Invalid local payment record. Sending is blocked.", 503)
         return record
 
@@ -182,11 +205,28 @@ class Wallet:
         if record and not record.get("observed"):
             try:
                 transfer = self.rpc("get_transfer_by_txid", {"txid": record["txHash"]})["transfer"]
-            except (WalletError, KeyError):
+                if transfer.get('txid') != record['txHash'] or transfer.get('type') not in ('out', 'pending'):
+                    return
+                self.pin()
+                result = self.daemon('get_transactions', {'txs_hashes': [record['txHash']], 'decode_as_json': False, 'prune': True})
+                found = [tx for tx in result.get('txs', []) if tx.get('tx_hash') == record['txHash']]
+                if len(found) != 1:
+                    return
+                tx = found[0]
+                if transfer['type'] == 'pending':
+                    if tx.get('in_pool') is not True:
+                        return
+                else:
+                    height = tx.get('block_height')
+                    if tx.get('in_pool') is not False or type(height) is not int or height < 1:
+                        return
+                    block = self.daemon('get_block', {'height': height})
+                    if block.get('block_header', {}).get('height') != height or record['txHash'] not in json.loads(block['json']).get('tx_hashes', []):
+                        return
+            except (WalletError, KeyError, TypeError, ValueError):
                 return
-            if transfer.get("txid") == record["txHash"] and transfer.get("type") in ("out", "pending", "failed"):
-                record.update(observed=True, status=transfer["type"])
-                self.save_send_record(record)
+            record.update(observed=True, status=transfer["type"])
+            self.save_send_record(record)
 
     def pin(self):
         info = self.daemon("get_info")
@@ -359,7 +399,7 @@ class Wallet:
                     raise WalletError("Transaction review expired or was already used.", 409)
                 self.pending = None  # Consume before RPC: an uncertain relay is never retried automatically.
                 record = {key: pending["quote"][key] for key in ("txHash", "address", "amountAtomic", "totalAtomic")}
-                record.update(wallet=self.open_name, status="relaying", observed=False)
+                record.update(wallet=self.open_name, genesis=self.genesis, status="relaying", observed=False)
                 self.save_send_record(record)  # Failure here means relay has NOT happened.
                 try:
                     tx = self.rpc("relay_tx", {"hex": pending["metadata"]})
@@ -383,7 +423,9 @@ class Wallet:
 
 
 class Server(http.server.ThreadingHTTPServer):
-    daemon_threads = False
+    # A stalled client/RPC request must not delay terminating the owned native
+    # wallet. Pre-relay intent is durable; interrupted sends remain unresolved.
+    daemon_threads = True
     request_queue_size = 8
     allow_reuse_address = False
 
@@ -398,10 +440,21 @@ class Server(http.server.ThreadingHTTPServer):
         self.slots = threading.BoundedSemaphore(8)
         # Cookies have no port isolation. Give this local app a separate host
         # cookie jar instead of sharing credentials with every 127.0.0.1 app.
+        if host is None and platform.system() == "Darwin":
+            # macOS does not bind arbitrary 127/8 addresses without an admin alias.
+            # A unique reserved localhost name preserves host-only cookie isolation.
+            host = "meep-" + secrets.token_hex(16) + ".localhost"
         host = host or f"127.77.{secrets.randbelow(254)+1}.{secrets.randbelow(254)+1}"
-        if not ipaddress.ip_address(host).is_loopback:
-            raise ValueError("Only a numeric loopback host is allowed")
-        super().__init__((host, port), Handler)
+        if re.fullmatch(r"meep-[0-9a-f]{32}\.localhost", host):
+            addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+            if not addresses or any(not ipaddress.ip_address(row[4][0]).is_loopback for row in addresses):
+                raise ValueError("Reserved wallet hostname must resolve exclusively to loopback")
+            bind_host = "127.0.0.1"
+        else:
+            if not ipaddress.ip_address(host).is_loopback:
+                raise ValueError("Only loopback wallet hosts are allowed")
+            bind_host = host
+        super().__init__((bind_host, port), Handler)
         self.origin = f"http://{host}:{self.server_port}"
         self.cookie_name = "meep_local_" + str(self.server_port)
         self.assets = {route: ((Path(__file__).parent / "web" / filename).read_bytes(), mime)
@@ -572,7 +625,7 @@ def main():
     parser.add_argument("--genesis", required=True)
     parser.add_argument("--network", choices=("testnet", "regtest"), default="testnet")
     parser.add_argument("--port", type=int, default=0)
-    parser.add_argument("--host", help="Numeric loopback host; default is a random dedicated loopback address")
+    parser.add_argument("--host", help="Loopback host; defaults to an isolated numeric host or unique macOS localhost name")
     parser.add_argument("--seconds", type=int, default=1800)
     args = parser.parse_args()
     if not 60 <= args.seconds <= 3600 or not 1 <= args.daemon_port <= 65535 or not 0 <= args.port <= 65535:
@@ -582,6 +635,7 @@ def main():
     executable = args.wallet_rpc.resolve(strict=True)
     run = directory / ("session-" + secrets.token_hex(8))
     run.mkdir(mode=0o700)
+    owner = guarded.register_native(run, 'wallet', args.genesis)
     port = free_port()
     user, password = "local", secrets.token_hex(32)
     cfg = run / "wallet.conf"
@@ -605,11 +659,15 @@ def main():
     def resource_limits():
         import resource
         os.nice(10)
-        resource.setrlimit(resource.RLIMIT_AS, (2 * 1024**3, 2 * 1024**3))
+        if platform.system() == "Linux":
+            resource.setrlimit(resource.RLIMIT_AS, (2 * 1024**3, 2 * 1024**3))
+        # Darwin rejects RLIMIT_AS and reserves large virtual regions. CPU, file,
+        # core and session limits still apply; actual RSS is qualified separately.
+        resource.setrlimit(resource.RLIMIT_CPU, (args.seconds + 30,) * 2)
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
         resource.setrlimit(resource.RLIMIT_FSIZE, (128 * 1024**2, 128 * 1024**2))
-    child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
-                             start_new_session=os.name != "nt", preexec_fn=resource_limits if os.name == "posix" else None)
+    child = guarded.Child(argv, output=output, receipt=run / "GUARD_STOPPED.json",
+                          seconds=args.seconds + 45, limits=resource_limits, owner=owner)
     (run / "PROCESS.json").write_text(json.dumps({"nativePid": child.pid}) + "\n")
     server = None
     try:
@@ -641,18 +699,16 @@ def main():
             server.handle_request()
             wallet.expire()
     finally:
-        if server:
-            server.server_close()
+        shutdown_deadline = time.monotonic() + 45
+        # Start native shutdown before any request cleanup. The native wallet
+        # saves encrypted state on SIGTERM; a close/store RPC can itself stall.
+        if child.poll() is None:
+            child.terminate()
         try:
-            wallet.lock()
+            if server:
+                server.server_close()
+            child.wait(timeout=max(.1, shutdown_deadline - time.monotonic()))
         finally:
-            if child.poll() is None:
-                child.terminate()
-                try:
-                    child.wait(timeout=20)
-                except subprocess.TimeoutExpired:
-                    child.kill()
-                    child.wait(timeout=10)
             output.close()
             cfg.unlink(missing_ok=True)
             (directory / "OPEN_WALLET.html").unlink(missing_ok=True)

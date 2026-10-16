@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import https from 'node:https';
 import http from 'node:http';
 import {execFileSync,spawn} from 'node:child_process';
-import {existsSync,readFileSync,writeFileSync,mkdtempSync,rmSync} from 'node:fs';
+import {existsSync,readFileSync,writeFileSync,mkdtempSync,rmSync,chmodSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createTestnetService} from '../testnet_service.mjs';
@@ -34,6 +34,11 @@ test('TLS identity refuses wrong host, key, expiry and partial wildcard certific
  assert.throws(()=>validateTlsIdentity({key:tls.key,cert:readFileSync(partial),origin:'https://foo.example.test',endsUtcUnix}),/hostname/);
 });
 async function fixture(t,extra={}) {
+ if(extra.experiment&&!extra.availabilityFile){
+  const dir=mkdtempSync(join(tmpdir(),'meep-progress-'));t.after(()=>rmSync(dir,{recursive:true}));
+  extra={...extra,availabilityFile:join(dir,'progress.json')};
+  writeFileSync(extra.availabilityFile,JSON.stringify({schema:'meepcoin-progress/1',genesis:'c'.repeat(64),height:0,tip:null,lastProgressMs:extra.experiment.startsUtcUnix*1000,closed:false}),{mode:0o600});
+ }
  let available=true,bytes=2n*1024n**3n,clock=0,calls=0,healthGate,healthEntered,identity={nettype:'testnet',version:'fixture-build',genesis:'c'.repeat(64),timestamp:extra.experiment?.genesisUtcUnix};
  const rpc=http.createServer(async(req,res)=>{
   let text='';for await(const c of req)text+=c;
@@ -63,7 +68,7 @@ async function fixture(t,extra={}) {
    req.on('error',bad);req.setTimeout(20000,()=>req.destroy(Error('test request deadline')));req.end(raw);
   });
  }
- return {service,request,endpoint:'http://127.0.0.1:'+rpc.address().port+'/json_rpc',calls:()=>calls,available:x=>available=x,space:x=>bytes=x,clock:x=>clock=x,
+ return {service,request,availabilityFile:extra.availabilityFile,endpoint:'http://127.0.0.1:'+rpc.address().port+'/json_rpc',calls:()=>calls,available:x=>available=x,space:x=>bytes=x,clock:x=>clock=x,
   identity:x=>Object.assign(identity,x),
   holdHealth(){let release,entered;healthGate=new Promise(ok=>release=ok);const reached=new Promise(ok=>entered=ok);healthEntered=entered;return {reached,release:()=>{healthGate=null;release();}};}};
 }
@@ -94,9 +99,10 @@ test('Linux CLI rotates owner-only invitation files and persists revocation acro
  t.after(()=>rmSync(dir,{recursive:true}));
  const configPath=join(dir,'config.json'),inviteOutput=join(dir,'invitations.json'),keyFile=join(dir,'key.pem');
  const utc=Math.floor(Date.now()/1000),experiment={genesisUtcUnix:utc,startsUtcUnix:utc,endsUtcUnix:utc+3600};
+ const availabilityFile=join(dir,'progress.json');writeFileSync(availabilityFile,JSON.stringify({schema:'meepcoin-progress/1',genesis:'c'.repeat(64),height:0,tip:null,lastProgressMs:utc*1000,closed:false}),{mode:0o600});
  writeFileSync(keyFile,tls.key,{mode:0o600});writeFileSync(inviteOutput,'{}',{mode:0o600});
  writeFileSync(configPath,JSON.stringify({endpoint:f.endpoint,tls:undefined,keyFile,certFile:join(certDir,'cert.pem'),origin:'https://localhost',port:0,
-  expectedGenesisHash:'c'.repeat(64),expectedVersion:'fixture-build',dataDirectory:dir,inviteOutput,nativeCommand:['never-invoked'],experiment,
+  expectedGenesisHash:'c'.repeat(64),expectedVersion:'fixture-build',dataDirectory:dir,inviteOutput,nativeCommand:['never-invoked'],experiment,availabilityFile,
   sessions:[{token:tokenA,walletAddress:'2'.repeat(95)}],incidentContact:'Local rehearsal only'}),{mode:0o600});
  async function launch(){
   const child=spawn(process.execPath,[fileURLToPath(new URL('../testnet_service.mjs',import.meta.url)),configPath],{stdio:['ignore','pipe','pipe']});
@@ -138,6 +144,7 @@ test('Absolute epoch caps rotation, checks native genesis time and rejects a pen
 test('CLI refuses expired persisted experiments before listening',async t=>{
  const dir=mkdtempSync(join(tmpdir(),'meep-expired-'));t.after(()=>rmSync(dir,{recursive:true}));
  const path=join(dir,'config.json'),utc=Math.floor(Date.now()/1000);
+ chmodSync(join(certDir,'key.pem'),0o600);chmodSync(join(certDir,'cert.pem'),0o600);
  writeFileSync(path,JSON.stringify({experiment:{genesisUtcUnix:utc-120,startsUtcUnix:utc-120,endsUtcUnix:utc-60},
   keyFile:join(certDir,'key.pem'),certFile:join(certDir,'cert.pem'),origin:'https://localhost',expectedGenesisHash:'c'.repeat(64),
   expectedVersion:'fixture-build',sessions:[{token:tokenA,walletAddress:'2'.repeat(95)}]}),{mode:0o600});
@@ -145,6 +152,23 @@ test('CLI refuses expired persisted experiments before listening',async t=>{
  let text='';child.stdout.on('data',x=>text+=x);child.stderr.on('data',x=>text+=x);
  const result=await new Promise((ok,bad)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');bad(Error('Expired CLI did not exit'));},5000);child.once('close',code=>{clearTimeout(timer);ok(code);});});
  assert.notEqual(result,0);assert(!text.includes('"listening"'));assert.match(text,/experiment not active/);
+});
+
+test('Finite gateway persists unchanged-chain age and latched closure across restart',async t=>{
+ const utc=1791810000;let wall=utc*1000;
+ const options={experiment:{genesisUtcUnix:utc,startsUtcUnix:utc,endsUtcUnix:utc+3600},incidentContact:'fixture',wallNow:()=>wall};
+ const first=await fixture(t,options);assert.equal((await first.request('/readyz')).status,200);
+ wall+=599000;assert.equal((await first.request('/readyz')).json().lastBlockAgeSeconds,599);
+ await first.service.close();
+ const second=await fixture(t,{...options,availabilityFile:first.availabilityFile});
+ assert.equal((await second.request('/readyz')).json().lastBlockAgeSeconds,599);
+ wall+=1000;const closed=await second.request('/readyz');assert.equal(closed.status,503);assert.equal(closed.json().reason,'chain_stalled');
+ assert.equal(JSON.parse(readFileSync(first.availabilityFile)).closed,true);
+ await second.service.close();wall+=1000;
+ const third=await fixture(t,{...options,availabilityFile:first.availabilityFile});
+ assert.equal((await third.request('/api/start',{method:'POST',data:{}})).json().error,'chain_stalled');
+ await assert.rejects(createTestnetService({tls,origin:'https://localhost',expectedGenesisHash:'c'.repeat(64),expectedVersion:'fixture-build',
+  sessions:[{token:tokenA,walletAddress:'2'.repeat(95)}],...options}),/Persisted progress file required/);
 });
 
 test('Generated operator epoch closes the real CLI and cannot be renewed by restart',async t=>{
@@ -230,6 +254,41 @@ test('Rotation while health is pending rejects the old start before gateway admi
  assert.equal((await f.request('/api/start',{token:next,method:'POST',data:{}})).status,200);
 });
 
+test('Disconnected health/start cancels admission without permanently revoking the invitation',async t=>{
+ const f=await fixture(t),gate=f.holdHealth(),abort=new AbortController();
+ const pending=f.request('/api/start',{method:'POST',data:{},signal:abort.signal}).catch(error=>error);
+ await gate.reached;abort.abort();await pending;
+ await new Promise(ok=>setTimeout(ok,50));gate.release();
+ const status=await f.request('/api/status');assert.equal(status.status,200);
+ assert.equal(status.json().running,false);assert.equal(status.json().attemptedStarts,0);
+ const started=await f.request('/api/start',{method:'POST',data:{}});assert.equal(started.status,200);
+ await f.service.revoke(tokenA);assert.equal((await f.request('/api/status')).status,403);
+});
+
+test('Lost status response cancels only its live job; authorization and explicit restart survive',async t=>{
+ const f=await fixture(t);
+ assert.equal((await f.request('/api/start',{method:'POST',data:{}})).status,200);
+ assert.equal((await f.request('/api/start',{method:'POST',data:{},token:tokenB})).status,200);
+ const gate=f.holdHealth(),abort=new AbortController();
+ const pending=f.request('/api/status',{signal:abort.signal}).catch(error=>error);
+ await gate.reached;abort.abort();await pending;await new Promise(ok=>setTimeout(ok,50));gate.release();
+ const stopped=await f.request('/api/status');assert.equal(stopped.status,200);
+ assert.equal(stopped.json().running,false);assert.equal(stopped.json().attemptedStarts,1);
+ const other=await f.request('/api/status',{token:tokenB});assert.equal(other.status,200);assert.equal(other.json().running,true);
+ assert.equal((await f.request('/api/start',{method:'POST',data:{}})).status,200);
+ assert.equal((await f.request('/api/status')).json().attemptedStarts,2);
+ await f.service.revoke(tokenA);assert.equal((await f.request('/api/status')).status,403);
+});
+
+test('Health responses cannot publish stale readiness/status after concurrent revocation',async t=>{
+ for(const path of ['/readyz','/api/status']){
+  const f=await fixture(t),gate=f.holdHealth(),pending=f.request(path);
+  await gate.reached;await f.service.revoke(tokenA);gate.release();
+  assert.equal((await pending).status,403,path);
+  assert.equal((await f.request('/api/status',{token:tokenB})).status,200);
+ }
+});
+
 test('An operator revoke or shutdown wins a simultaneous rotation',async t=>{
  const f=await fixture(t);
  const rotating=f.service.rotate(tokenA),revoking=f.service.revoke(tokenA);
@@ -280,4 +339,11 @@ test('Disconnected candidate retains the single native verifier slot until proce
  let next;const deadline=Date.now()+2000;
  do{next=await f.request('/api/candidate',{method:'POST',data:candidate(b),token:tokenB});if(next.status===429)await new Promise(ok=>setTimeout(ok,20));}while(next.status===429&&Date.now()<deadline);
  assert.equal(next.status,200);assert.equal(calls,2);assert.equal(peak,1);
+ const status=await f.request('/api/status');assert.equal(status.status,200);
+ assert.equal(status.json().running,false);assert.equal(status.json().attemptedStarts,1);
+ // This fixture deliberately returns a false native hash. Authorization
+ // survives disconnect, but the independent verifier fault must stay latched.
+ assert(status.json().verifierFault);
+ assert.equal((await f.request('/api/start',{method:'POST',data:{}})).status,500);
+ assert.equal((await f.request('/api/status')).json().attemptedStarts,1);
 });

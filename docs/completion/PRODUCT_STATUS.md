@@ -1,3 +1,36 @@
+# Current checkpoint - October 16, 2026
+
+The latest release and empirical scope are recorded in
+[REHEARSAL_RESULTS_20261016.md](REHEARSAL_RESULTS_20261016.md) and
+[OWNER_REHEARSAL_20261015.md](OWNER_REHEARSAL_20261015.md). The historical
+checkpoints below retain their original identities and limitations. The fresh
+network has a fixed 05:39:28 UTC expiry; a broader public launch remains gated
+by independent human review. Consult the final closure/review receipt for
+terminal status, rather than treating historical success as current service uptime.
+
+---
+
+# MeepCoin two-device installation checkpoint - October 15, 2026
+
+All 13 initial participant-installation requirements passed on the owner's
+Debian 13 ARM64 Pi and macOS 26 ARM64 Mac, with Chromium and Chrome respectively.
+The signed `0.1.0-participant.2` distributions include relocated native programs
+and their libraries, an authenticated installer, private peer/session control,
+local browser wallet onboarding/recovery, and conservative update/removal.
+Both computers passed actual signed installation, restricted peer access,
+wallet recovery, compatible upgrade, timed cleanup and data-preserving removal.
+Revocation disconnected active clients using separate Linux service cgroups;
+the other participant stayed connected. Failed earlier revocation attempts are
+preserved. All temporary services stopped; the qualification invitation expired.
+
+See [PARTICIPANT_INSTALLATION.md](PARTICIPANT_INSTALLATION.md) and
+`wallet/QUALIFICATION_20261015.json` for exact platforms, identities, hashes,
+scope and observed results. The archive is a draft owner-only qualification
+release. It does not reopen the public experiment. Safari wallet use, mobile,
+outside-home participant access, a newly deployed public HTTPS journey and an
+independent human security review remain unqualified. The installation check
+did not repeat mining or payment tests; the prior separate evidence follows.
+
 # MeepCoin integrated participant checkpoint - October 13, 2026
 
 The final October 13 runtime receipt is
