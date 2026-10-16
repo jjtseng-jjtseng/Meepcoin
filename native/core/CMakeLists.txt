@@ -58,8 +58,14 @@ if(MEEPCOIN_TESTNET17)
   if(MEEPCOIN_TESTNET17_GENESIS_TIMESTAMP LESS_EQUAL 1785283200)
     message(FATAL_ERROR "The v17 testnet genesis must follow the v16 schedule timestamp")
   endif()
-  add_definitions(-DMEEPCOIN_TESTNET17=1 -DMEEPCOIN_TESTNET17_GENESIS_TIMESTAMP=${MEEPCOIN_TESTNET17_GENESIS_TIMESTAMP}ULL)
+  add_definitions(-DMEEPCOIN_TESTNET17=1)
 endif()
+# Keep the compile-time identity in the two translation units that use it.
+# A new genesis must rebuild those units, rather than every dependency. There
+# is still no runtime override; different timestamps produce different binaries.
+configure_file(src/meepcoin_testnet17_genesis.h.in
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/meepcoin_testnet17_genesis.h" @ONLY)
+include_directories("${CMAKE_CURRENT_BINARY_DIR}/generated")
 
 option (USE_CCACHE "Use ccache if a usable instance is found" ON)
 if (USE_CCACHE)

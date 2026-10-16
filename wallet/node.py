@@ -20,6 +20,7 @@ import subprocess
 import sys
 import time
 sys.dont_write_bytecode = True
+import guarded
 
 spec = importlib.util.spec_from_file_location('wallet_launch', Path(__file__).with_name('launch.py'))
 launch = importlib.util.module_from_spec(spec)
@@ -84,6 +85,7 @@ def main():
             os.close(fd)
     run = root / ('node-session-' + secrets.token_hex(8))
     run.mkdir(mode=0o700)
+    owner = guarded.register_native(run, 'node', manifest['genesisHash'], manifest['releaseVersion'])
     config = run / 'empty.conf'
     config.write_text('')
     child = None
@@ -116,8 +118,8 @@ def main():
         '--allow-local-ip', '--out-peers', '1', '--add-exclusive-node', '127.0.0.1:' + str(args.peer_port)]
     try:
         output = (run / 'process.log').open('xb')
-        child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
-                                 start_new_session=True, preexec_fn=limits)
+        child = guarded.Child(argv, output=output, receipt=run / 'GUARD_STOPPED.json',
+                              seconds=args.seconds + 45, limits=limits, owner=owner)
         began = time.monotonic()
         deadline = began + args.seconds
         daemon = launch.c.RPC(args.rpc_port)
@@ -155,22 +157,9 @@ def main():
             signal.signal(sig, signal.SIG_IGN)
         empty = child is None
         if child is not None:
-            for sig, seconds in ((signal.SIGTERM, 30), (signal.SIGKILL, 10)):
-                try:
-                    os.killpg(child.pid, sig)
-                except ProcessLookupError:
-                    pass
-                end = time.monotonic() + seconds
-                while time.monotonic() < end:
-                    child.poll()
-                    try:
-                        os.killpg(child.pid, 0)
-                    except ProcessLookupError:
-                        empty = True
-                        break
-                    time.sleep(.1)
-                if empty:
-                    break
+            child.terminate()
+            child.wait(timeout=45)
+            empty = json.loads((run / 'GUARD_STOPPED.json').read_text())['ownedGroupDrained']
         if output:
             output.close()
         stopped = {'status': 'PARTICIPANT_LOCAL_NODE_STOPPED', 'reason': reason,

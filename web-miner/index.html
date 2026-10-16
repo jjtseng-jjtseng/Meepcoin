@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>MeepCoin local browser miner (development slice)</title>
+<link rel="stylesheet" href="/styles.css">
+<!-- An empty data: icon, so the browser does not request /favicon.ico and log a 404. The route
+     table serves no icon on purpose: this page ships no asset it does not need. -->
+<link rel="icon" href="data:,">
+</head>
+<body>
+<main>
+  <h1>MeepCoin browser miner <span class="tag">local development slice</span></h1>
+
+  <!-- RECORDED-TEMPLATE SIMULATION BANNER.
+       Hidden by default and revealed only when the SERVER says it is in simulation mode, before
+       Start and before anything is allocated. A page cannot select this mode for itself. -->
+  <section class="panel warn" id="sim-banner" aria-labelledby="sim-h" hidden>
+    <h2 id="sim-h">RECORDED-TEMPLATE SIMULATION</h2>
+    <ul id="sim-labels" class="facts"></ul>
+    <p class="fineprint" id="sim-notice"></p>
+    <p class="fineprint" id="sim-allocate"></p>
+    <!-- STATIC, not server-supplied: these are the claims this mode is allowed to make, and a
+         regression test reads them straight out of this file. -->
+    <ul class="facts" id="sim-truths">
+      <li>One predetermined nonce from a committed, daemon-generated local-devnet vector.
+          Nothing is searched for.</li>
+      <li>Hashed once by this browser&rsquo;s WebAssembly build, once by the server&rsquo;s own
+          WebAssembly build, and once by the local native helper. All three are built from the
+          <strong>same implementation lineage</strong> (the same C++ source), so their agreement
+          catches a build, toolchain, marshalling or context fault &mdash; not a mistake shared by
+          all of them.</li>
+      <li><strong>Live local native helper</strong> &mdash; a local native C++ child process, given
+          the exact same recorded context. It starts only after you press Start and is stopped with
+          the local server.</li>
+      <li><strong>Mock daemon</strong> &mdash; an in-memory object with counters. No socket, no RPC,
+          no chain.</li>
+      <li><strong>No daemon and no blockchain is contacted.</strong></li>
+      <li><strong>No block is mined, submitted or accepted</strong>, and nothing is created.</li>
+    </ul>
+    <dl class="facts">
+      <dt>Recorded block height</dt><dd><output id="sim-height">&mdash;</output></dd>
+      <dt>The one nonce to hash</dt><dd><output id="sim-nonce">&mdash;</output></dd>
+      <dt>Browser hash</dt><dd><output id="sim-browser-hash">&mdash;</output></dd>
+      <dt>Server recomputation</dt><dd><output id="sim-server-hash">&mdash;</output></dd>
+      <dt>Recorded expected hash</dt><dd><output id="sim-expected-hash">&mdash;</output></dd>
+      <dt>Candidate hashes</dt><dd><output id="sim-hash-counts">&mdash;</output></dd>
+      <dt>Native helper allocation</dt><dd><output id="sim-native-alloc">&mdash;</output></dd>
+      <dt>Counters</dt><dd><output id="sim-counters">&mdash;</output></dd>
+    </dl>
+  </section>
+
+  <!-- REAL-LOCAL-DAEMON BANNER. Hidden by default and revealed only when the SERVER says it is in
+       real-local-daemon mode. A page cannot select this mode for itself. -->
+  <section class="panel warn" id="real-banner" aria-labelledby="real-h" hidden>
+    <h2 id="real-h">REAL LOCAL DAEMON &mdash; PRIVATE, ON THIS COMPUTER</h2>
+    <ul id="real-labels" class="facts"></ul>
+    <p class="fineprint" id="real-notice"></p>
+    <p class="fineprint" id="real-allocate"></p>
+    <ul class="facts" id="real-truths">
+      <li>MeepCoin daemons built from this repository run privately on this computer in their test
+          network mode; the labels above say exactly how (one offline node, or two nodes paired only
+          with each other). Their test coins have no value.</li>
+      <li>An accepted block pays its coinbase to an address fixed by whoever started this local
+          server, before this page loaded. <strong>This page does not choose it, is never told it,
+          and cannot change it</strong> &mdash; nothing you send from here can move a reward. Those
+          coins exist only on the private chain on this computer.</li>
+      <li>This browser searches each fresh block template it actually starts at most once: at most
+          <strong>8,192 nonces</strong> or <strong>120 seconds</strong> per template, whichever comes
+          first. Trusted local server code may supersede queued work before the browser starts it; that
+          skipped template is never searched. How many positions one Start covers &mdash; one, or a finite development sequence of
+          at most <strong>32</strong> &mdash; is
+          stated by the labels above, before you press Start. No answer is known in advance, and
+          finding none is a normal outcome.</li>
+      <li>A nonce that meets the daemon&rsquo;s target is recomputed by the server&rsquo;s WebAssembly
+          build, the local native helper and the daemon, and submitted to that private daemon
+          <strong>at most once per template, never retried</strong>. Success means the daemon&rsquo;s
+          own canonical readback shows that exact block on top of its chain &mdash; nothing more.</li>
+    </ul>
+    <dl class="facts">
+      <dt>Template height</dt><dd><output id="real-height">&mdash;</output></dd>
+      <dt>Nonce window</dt><dd><output id="real-window">&mdash;</output></dd>
+      <dt>Nonces searched</dt><dd><output id="real-searched">&mdash;</output></dd>
+      <dt>Found nonce</dt><dd><output id="real-found-nonce">&mdash;</output></dd>
+      <dt>Browser hash</dt><dd><output id="real-browser-hash">&mdash;</output></dd>
+      <dt>Server recomputation</dt><dd><output id="real-server-hash">&mdash;</output></dd>
+      <dt>Accepted block id</dt><dd><output id="real-block-id">&mdash;</output></dd>
+      <dt>Block of this Start</dt><dd><output id="real-sequence">&mdash;</output></dd>
+      <dt>Blocks accepted</dt><dd><output id="real-blocks">&mdash;</output></dd>
+      <dt>Total nonces searched</dt><dd><output id="real-total-attempts">&mdash;</output></dd>
+      <dt>Browser workers created</dt><dd><output id="real-workers">&mdash;</output></dd>
+      <dt>Outcome</dt><dd><output id="real-outcome">&mdash;</output></dd>
+      <dt>Counters</dt><dd><output id="real-counters">&mdash;</output></dd>
+    </dl>
+  </section>
+
+  <!-- Shown until server_hello arrives. Neither mode-specific block may be displayed before then:
+       the synthetic consent copy states things that are false in simulation mode, and vice versa. -->
+  <section class="panel" id="connecting-note">
+    <p class="fineprint">Connecting to the local development pool&hellip; what this page will do
+       depends on which mode that server is running, so nothing is claimed until it says.</p>
+  </section>
+
+  <p class="lede">
+    This page runs the frozen MeepHash-W v2 proof-of-work in your browser against a
+    <strong>development pool server on this machine only</strong>. It is an engineering demo of the
+    mining loop. There is no public MeepCoin network and no coin of value; in its real-daemon mode the
+    local server may run a private development network on this computer only.
+  </p>
+
+  <!-- SYNTHETIC MODE ONLY. Every claim below -- a synthetic job, an accepted share, two
+       independently built copies, a native child process, a four-hash batch, pressing Start again
+       for another run -- is false in recorded-template simulation mode, so this whole panel is
+       revealed only when the server says it is synthetic. -->
+  <section class="panel warn" id="synthetic-consent" aria-labelledby="consent-h" hidden>
+    <h2 id="consent-h">Before you press Start &mdash; what this will do</h2>
+    <dl class="facts">
+      <dt>What you are mining</dt>
+      <dd><strong>A local synthetic development job &mdash; no coins or rewards.</strong>
+          Shares that this page finds are counted by a server on your own computer and then
+          discarded. Nothing is earned, credited, stored or paid out.</dd>
+
+      <dt>Destination</dt>
+      <dd><strong>None.</strong> No wallet, no address, no payout and no account are involved, and
+          the page will never ask you for one. Results go to
+          <code id="dest-origin">the local server that served this page</code> and nowhere else.</dd>
+
+      <dt>Algorithm</dt>
+      <dd>Frozen MeepHash-W v2, compiled to WebAssembly
+          (<code>meepow/wasm/meepow.wasm</code>), run on your CPU.</dd>
+
+      <dt>How a share is checked</dt>
+      <dd>The pool never trusts a hash this page sends &mdash; it recomputes the nonce itself, on
+          <strong>two independently built copies</strong> of frozen v2: its own WebAssembly build
+          and a native build compiled with a different toolchain. A share counts only if those two
+          produce <strong>byte-for-byte identical</strong> results <em>and</em> the agreed hash
+          meets the target. If the two ever disagree, this pool stops verifying for good, stops
+          your mining, and accepts nothing further until it is restarted.
+          <strong>What this is not:</strong> both builds compile the <em>same</em> C++ source, so
+          this catches a compiler, toolchain or runtime difference &mdash; it cannot catch a
+          mistake that is in the algorithm itself.</dd>
+
+      <dt>CPU use</dt>
+      <dd><strong>Exactly 1 Web Worker</strong> on 1 CPU thread. The page never mines on the main
+          thread and never starts a second worker.</dd>
+
+      <dt>Memory &mdash; in this browser</dt>
+      <dd>Roughly <strong>46.3 MiB</strong> in that worker, allocated only after you press Start
+          &mdash; a 32 MiB dataset plus an 8 MiB scratchpad plus module overhead. That figure is
+          the value measured in Chrome and Firefox in <code>docs/BROWSER_V2.md</code>; treat it as
+          an estimate for your browser, not a guaranteed ceiling. Stop frees it by terminating the
+          worker.</dd>
+
+      <dt>Memory &mdash; in the local pool</dt>
+      <dd>The development pool on this machine is a <strong>separate process</strong>, and pressing
+          Start makes it load <em>two</em> copies of the algorithm so it can check your work
+          against both. Reported separately below, because they are different measurements of
+          different things:
+        <ul>
+          <li><strong>Its own WebAssembly build</strong> &mdash; roughly <strong>46.3 MiB</strong>
+              of Wasm heap, the same figure as the browser worker, measured the same way.</li>
+          <li><strong>A native build, in its own child process</strong> &mdash; exactly
+              <strong>40 MiB</strong> of algorithm memory (a 32 MiB dataset plus an 8 MiB
+              scratchpad). That is what the algorithm allocates, <em>not</em> the child process's
+              resident memory: the real process is larger, and this page does not measure it.</li>
+        </ul>
+          Please do not read those as one total. They are two numbers with different meanings, and
+          neither of them is the pool's actual RSS, which nothing here measures.
+          Being honest about the rest: <strong>Stop terminates the browser worker immediately, but
+          it does not free the pool's memory or its native child</strong> &mdash; those are
+          released when you stop the pool itself (Ctrl-C in its terminal). Until you press Start
+          the pool has not loaded, compiled or started either build and has allocated none of
+          this.</dd>
+
+      <dt>Heat and battery</dt>
+      <dd>Mining keeps one CPU core busy. Expect the fan to spin up, the device to get warm and a
+          laptop on battery to discharge noticeably faster. <strong>Press Stop, or just leave this
+          tab, and it ends.</strong> For a real-template search, you can choose a pause between
+          batches before pressing Start. That lowers the hash rate, but does not guarantee a
+          particular CPU percentage or reduce the memory used by the browser and local pool.</dd>
+
+      <dt>Work batch size</dt>
+      <dd>The worker pauses to check for a Stop message every
+          <output id="batch-size">4</output> hashes. This value comes from the server job.</dd>
+    </dl>
+    <p class="fineprint">
+      Nothing on this page starts by itself. Until you press Start, this browser has not requested
+      the algorithm at all, and the local pool has <em>not</em> loaded, compiled or started either
+      of its two builds, has <em>not</em> allocated their memory, has <em>not</em> launched the
+      native child process, and has <em>not</em> computed a single hash.
+      (For completeness: at startup the pool does read about 58&nbsp;KiB of the algorithm build
+      files and check their fingerprints, so it can later serve you exactly the bytes it checked.
+      Reading and fingerprinting two small files is not mining.) Pressing Start asks the pool to
+      load its verifier first; only when it answers does this page create its one worker. Hiding
+      this tab stops mining, and making it visible again does <em>not</em> resume &mdash; you have
+      to press Start again.
+    </p>
+    <p class="fineprint">
+      <strong>One run ends after one accepted share.</strong> Every job here carries the same fixed
+      synthetic context, target and nonce window, so the demonstration stops on purpose rather than
+      re-issuing work that would look fresh but is not. Press Start again for another run.
+    </p>
+  </section>
+
+  <section class="panel" aria-labelledby="controls-h">
+    <h2 id="controls-h">Controls</h2>
+    <div id="search-pace-wrap" class="pace-control" hidden>
+      <label for="search-pace">Real-template browser search pace</label>
+      <select id="search-pace">
+        <option value="0">Full speed (no added pause)</option>
+        <option value="100">Quieter (pause 100 ms after every 4 hashes)</option>
+      </select>
+      <p class="fineprint">A quieter search may find fewer hashes before the same time limit.
+        Choose before Start; Stop or hiding this tab still ends the session.</p>
+    </div>
+    <div class="controls">
+      <button id="start-btn" type="button" class="primary" disabled>Start mining</button>
+      <button id="stop-btn" type="button" class="danger" disabled>Stop</button>
+    </div>
+    <p class="fineprint" id="controls-note">Waiting for the local development pool&hellip;</p>
+  </section>
+
+  <section class="panel" aria-labelledby="status-h">
+    <h2 id="status-h">Status</h2>
+    <dl class="stats">
+      <dt>State</dt><dd><output id="state" data-state="idle">idle</output></dd>
+      <dt>Pool connection</dt><dd><output id="connection">disconnected</output></dd>
+      <dt>Job id</dt><dd><output id="job-id">&mdash;</output></dd>
+      <dt>Algorithm</dt><dd><output id="algorithm">&mdash;</output></dd>
+      <dt>Hashes attempted</dt><dd><output id="hashes">0</output></dd>
+      <dt>Measured rate</dt><dd><output id="hps">0.0</output> H/s</dd>
+      <dt>Shares accepted</dt><dd><output id="accepted">0</output></dd>
+      <dt>Shares rejected</dt><dd><output id="rejected">0</output></dd>
+      <dt>Last rejection reason</dt><dd><output id="reject-reason">&mdash;</output></dd>
+      <dt>Browser worker Wasm heap</dt><dd><output id="heap">&mdash;</output></dd>
+      <dt>Local pool Wasm verifier heap</dt><dd><output id="server-heap">&mdash;</output></dd>
+      <dt>Local pool native algorithm memory</dt>
+      <dd><output id="server-native">&mdash;</output>
+        <span class="fineprint">dataset + scratchpad only, not the child process's RSS</span></dd>
+      <dt>Share cross-check</dt><dd><output id="verifier-mode">&mdash;</output></dd>
+      <dt>Last error</dt><dd><output id="error">&mdash;</output></dd>
+    </dl>
+  </section>
+
+  <footer>
+    <p>
+      <strong>Localhost only. <span id="footer-no-rewards">No rewards.</span><span
+      id="footer-real-rewards" hidden>Private test coins only.</span></strong> This page is served from, and talks only to,
+      <code id="footer-origin">this machine</code>. <span id="footer-no-daemon">This slice includes,
+      connects to and runs no MeepCoin or Monero daemon</span><span id="footer-real" hidden>In this
+      mode the local server runs private MeepCoin daemons on this computer and nowhere else</span><span id="footer-synthetic" hidden> &mdash; the job is a fixed
+      synthetic one</span><span id="footer-simulation" hidden> &mdash; the job is one committed
+      historical block vector, replayed</span>. It is part of an
+      experimental research repository: MeepCoin has no public mainnet, no public testnet and no coin of value,
+      and no code here is suitable for securing funds. A page and a server working for a few
+      seconds establishes nothing about security, economics, consensus or production readiness.
+      Mining is voluntary, never automatic, and never hidden.
+    </p>
+  </footer>
+</main>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

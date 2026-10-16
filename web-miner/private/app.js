@@ -61,9 +61,33 @@ async function start(){
 }
 $('start').onclick=()=>void start();$('stop').onclick=()=>void stop();
 document.addEventListener('visibilitychange',()=>{if(document.hidden && running)void stop('Tab hidden');});
-window.addEventListener('pagehide',()=>{if(running){const previous=generation;generation=0;ticket++;running=false;terminate();fetch('/api/stop',{method:'POST',keepalive:true,
+window.addEventListener('pagehide',()=>{clearInterval(availabilityTimer);if(running){const previous=generation;generation=0;ticket++;running=false;terminate();fetch('/api/stop',{method:'POST',keepalive:true,
   headers:{'Content-Type':'application/json','X-Meep-Session':sessionToken},body:JSON.stringify({generation:previous})}).catch(()=>{});}});
 $('start').disabled=true;
+let availabilityBusy=false;
+async function availability(){
+  if(availabilityBusy)return;availabilityBusy=true;
+  const observedTicket=ticket,observedGeneration=generation;
+  const current=()=>observedTicket===ticket&&observedGeneration===generation;
+  try {
+    const response=await fetch('/api/status',{headers:{'X-Meep-Session':sessionToken},signal:AbortSignal.timeout(3000)});
+    if(!current())return;
+    if(!response.ok){if(running)await stop('Admission unavailable');return;}
+    const status=await response.json();if(!current()||!status.availability)return;
+    const info=status.availability;
+    // Ignore replies requested before a new local run. During hashing, a
+    // canceled native generation requires an explicit new start. A candidate
+    // already in Checking has no worker and may still receive its outcome.
+    if(worker&&running&&observedTicket===ticket&&observedGeneration===generation&&
+      (!status.running||status.generation!==generation)){await stop('Run canceled');return;}
+    if(!info.ready&&running)await stop(info.reason==='chain_stalled'?'Chain stalled':'Node unavailable');
+    const age=info.lastBlockAgeSeconds;
+    $('availability').textContent=info.ready
+      ?(Number.isFinite(age)?'Last observed canonical progress '+age+' seconds ago. ':'Node ready. ')+'No miners means no new blocks; payment and reward-unlock times are uncertain.'
+      :'Mining admission closed: '+info.reason+'. Hashing requires a deliberate new start after service recovery.';
+  }catch{if(current()&&running)await stop('Connection unavailable');}finally{availabilityBusy=false;}
+}
+const availabilityTimer=setInterval(()=>void availability(),5000);
 fetch('/api/status',{headers:{'X-Meep-Session':sessionToken}}).then(async r=>{if(!r.ok)throw new Error('unauthorized');return r.json();}).then(s=>{$('address').textContent=s.payoutAddress;generation=s.generation;
   // Reload is idle, and also revokes a leftover server intent.
   if(s.running && generation)void stop('Idle');else $('start').disabled=false;

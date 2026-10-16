@@ -1,3 +1,15 @@
+# Current checkpoint - October 16, 2026
+
+The latest release and empirical scope are recorded in
+[REHEARSAL_RESULTS_20261016.md](REHEARSAL_RESULTS_20261016.md) and
+[OWNER_REHEARSAL_20261015.md](OWNER_REHEARSAL_20261015.md). The historical
+checkpoints below retain their original identities and limitations. The fresh
+network has a fixed 05:39:28 UTC expiry; a broader public launch remains gated
+by independent human review. Consult the final closure/review receipt for
+terminal status, rather than treating historical success as current service uptime.
+
+---
+
 # Readiness after the bounded deployment rehearsal
 
 The deployed desktop invitation rehearsal is complete for its recorded finite

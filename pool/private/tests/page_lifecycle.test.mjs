@@ -5,18 +5,19 @@ import {readFile} from 'node:fs/promises';
 const code=await readFile(new URL('../../../web-miner/private/app.js',import.meta.url),'utf8');
 const flush=async()=>{for(let i=0;i<4;i++)await new Promise(ok=>setImmediate(ok));};
 function page(){
- const elements=new Map();const listeners={},winListeners={},requests=[],workers=[];
+ const elements=new Map();const listeners={},winListeners={},requests=[],workers=[],timers=new Map();let status={payoutAddress:'test',running:false,generation:0};
  const document={hidden:false,getElementById(id){if(!elements.has(id))elements.set(id,{textContent:'',disabled:false,classList:{add(){},remove(){}}});return elements.get(id);},addEventListener:(n,f)=>listeners[n]=f};
  const window={addEventListener:(n,f)=>winListeners[n]=f};
  class Worker{constructor(){this.messages=[];this.terminated=false;workers.push(this);}postMessage(m){this.messages.push(m);}terminate(){this.terminated=true;}}
- const fetch=(url,options)=>{if(url==='/api/status')return Promise.resolve({ok:true,json:async()=>({payoutAddress:'test',running:false,generation:0})});
+ const fetch=(url,options)=>{if(url==='/api/status')return Promise.resolve({ok:true,json:async()=>status});
   const req={path:url.split('/').pop(),data:JSON.parse(options.body),options};requests.push(req);
   if(req.path==='stop')return Promise.resolve({ok:true,json:async()=>({})});
   return new Promise(ok=>{req.resolve=data=>ok({ok:true,json:async()=>data});});};
- vm.runInNewContext(code,{document,window,fetch,Worker,URLSearchParams,location:{hash:'#session=test'}});
+ vm.runInNewContext(code,{document,window,fetch,Worker,URLSearchParams,AbortSignal,
+  setInterval(fn){timers.set(1,fn);return 1;},clearInterval(id){timers.delete(id);},location:{hash:'#session=test'}});
  return {window,document,workers,requests,click:id=>document.getElementById(id).onclick(),
   hidden(value){document.hidden=value;listeners.visibilitychange();},hide(){winListeners.pagehide();},
-  element:id=>document.getElementById(id)};
+  element:id=>document.getElementById(id),poll:()=>timers.get(1)?.(),status:value=>status={...status,...value},timers};
 }
 const job=gen=>({runGeneration:gen,height:'4',networkDifficulty:'20',jobId:'job-'+gen,nonceStart:0,nonceRange:8192});
 test('Idle page does not create a worker or mining request',async()=>{const p=page();await flush();assert.equal(p.workers.length,0);assert.equal(p.requests.length,0);});
@@ -25,6 +26,15 @@ test('Out-of-order old start cannot overwrite the live generation used by Stop',
  b.resolve(job(2));await flush();assert.equal(p.workers.length,1);
  a.resolve(job(1));await flush();assert.equal(p.requests.at(-1).data.generation,1);
  p.click('stop');await flush();assert.equal(p.requests.at(-1).data.generation,2);assert.equal(p.workers[0].terminated,true);assert.equal(p.window.meepPrivate.workerCount,0);
+});
+test('Operational outage stops work; recovery never automatically starts a worker',async()=>{
+ const p=page();await flush();p.click('start');p.requests.at(-1).resolve(job(1));await flush();
+ p.status({availability:{ready:false,reason:'chain_stalled'}});p.poll();await flush();
+ assert.equal(p.window.meepPrivate.workerCount,0);assert.equal(p.workers[0].terminated,true);
+ assert.match(p.element('availability').textContent,/chain_stalled/);
+ const count=p.requests.length;p.status({availability:{ready:true,lastBlockAgeSeconds:0}});p.poll();await flush();
+ assert.equal(p.requests.length,count);assert.equal(p.workers.length,1);
+ p.hide();assert.equal(p.timers.size,0);
 });
 test('Pagehide invalidates a pending start before its response can create a worker',async()=>{
  const p=page();await flush();p.click('start');const pending=p.requests.at(-1);p.hide();pending.resolve(job(1));await flush();

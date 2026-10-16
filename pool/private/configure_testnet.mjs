@@ -25,16 +25,17 @@ const experiment={genesisUtcUnix:Number(values['genesis-utc']),startsUtcUnix:utc
 experimentWindow(experiment);
 await validateTlsIdentity({origin:values.origin,key:await readFile(values.key),cert:await readFile(values.cert),endsUtcUnix:experiment.endsUtcUnix});
 const port=Number(values.port??(origin.port||443));if(!Number.isInteger(port)||port<1||port>65535)throw Error('port 1..65535 required');
-const path=resolve(values.out),inviteOutput=path+'.invitations.json';
+const path=resolve(values.out),inviteOutput=path+'.invitations.json',availabilityFile=path+'.progress.json';
 const directory=await lstat(dirname(path));
 if(!directory.isDirectory()||directory.isSymbolicLink()||(process.platform!=='win32'&&((directory.mode&0o077)!==0||directory.uid!==process.getuid())))throw Error('owner-only operator directory required');
-for(const destination of [path,inviteOutput]){
+for(const destination of [path,inviteOutput,availabilityFile]){
  try{await lstat(destination);throw Error('operator output already exists');}catch(error){if(error.code!=='ENOENT')throw error;}
 }
 const sessions=values.address.map(walletAddress=>({walletAddress,token:randomBytes(32).toString('hex')}));
 const config={origin:values.origin,endpoint:values.endpoint,expectedNetwork:'testnet',expectedGenesisHash:values.genesis,expectedVersion:values.version,
  host:values.host??'127.0.0.1',port,keyFile:resolve(values.key),certFile:resolve(values.cert),dataDirectory:resolve(values.data),inviteOutput,
- nativeCommand:[resolve(values.native)],sessionTtlMs:duration*1000,maxJobs:32,sessions,experiment,incidentContact:values.contact};
+ nativeCommand:[resolve(values.native)],sessionTtlMs:duration*1000,maxJobs:32,sessions,experiment,incidentContact:values.contact,availabilityFile};
+await writeFile(availabilityFile,JSON.stringify({schema:'meepcoin-progress/1',genesis:values.genesis,height:0,tip:null,lastProgressMs:utc*1000,closed:false})+'\n',{flag:'wx',mode:0o600});
 await writeFile(path,JSON.stringify(config,null,2)+'\n',{flag:'wx',mode:0o600});
 await writeFile(inviteOutput,JSON.stringify({origin:values.origin,sessions:sessions.map(s=>({walletAddress:s.walletAddress,url:values.origin+'/#session='+s.token}))},null,2)+'\n',{flag:'wx',mode:0o600});
 console.log(JSON.stringify({config:path,invitations:inviteOutput,publicExposure:false}));

@@ -27,6 +27,10 @@ class Native:
     def daemon(self, method, params=None):
         if method == "get_info":
             return {"nettype": "testnet", "height": 40}
+        if method == 'get_transactions':
+            return {'txs': [{'tx_hash':'c'*64,'in_pool':False,'block_height':20}] if self.observed else []}
+        if method == 'get_block':
+            return {'block_header':{'height':20},'json':json.dumps({'tx_hashes':['c'*64]})}
         return {"block_header": {"hash": "b" * 64 if self.fail_pin else GENESIS}}
 
     def __call__(self, method, params=None):
@@ -130,6 +134,22 @@ class WalletTests(unittest.TestCase):
         self.wallet.rpc = inspect
         self.wallet.operate("confirm", {"id": quote["id"]})
 
+    def test_wallet_history_without_matching_node_evidence_stays_unresolved(self):
+        quote = self.wallet.operate('prepare', {'address': ADDRESS, 'amount': '1'})
+        self.native.fail_relay = True
+        self.wallet.operate('confirm', {'id': quote['id']})
+        self.native.observed = True
+        real_daemon = self.wallet.daemon
+        for reply in ({'txs':[]}, {'txs':[{'tx_hash':'d'*64,'in_pool':False,'block_height':20}]},
+                      {'txs':[{'tx_hash':'c'*64,'in_pool':True}]}):
+            self.wallet.daemon = lambda method, params=None: reply if method == 'get_transactions' else real_daemon(method,params)
+            self.wallet.operate('refresh', {})
+            self.assertFalse(self.wallet.send_record()['observed'])
+        self.wallet.daemon = real_daemon
+        self.wallet.operate('refresh', {})
+        self.assertTrue(self.wallet.send_record()['observed'])
+        self.assertEqual(sum(m == 'relay_tx' for m, _ in self.native.calls), 1)
+
     def test_store_failure_preserves_submitted_hash(self):
         quote = self.wallet.operate("prepare", {"address": ADDRESS, "amount": "1"})
         self.native.fail_store = True
@@ -147,6 +167,22 @@ class WalletTests(unittest.TestCase):
         with self.assertRaises(OSError):
             self.wallet.operate("confirm", {"id": quote["id"]})
         self.assertNotIn("relay_tx", dict(self.native.calls))
+
+    def test_corrupt_payment_record_cannot_be_treated_as_reconciled(self):
+        quote = self.wallet.operate("prepare", {"address": ADDRESS, "amount": "1"})
+        self.native.fail_relay = True
+        self.wallet.operate("confirm", {"id": quote["id"]})
+        path = Path(self.temp.name) / "alice.last-send.json"
+        original = json.loads(path.read_text())
+        for change in ({"observed": "false"}, {"observed": True}, {"genesis": "b" * 64},
+                       {"amountAtomic": "-1"}, {"totalAtomic": "0"}):
+            path.write_text(json.dumps({**original, **change}))
+            with self.assertRaises(c.WalletError):
+                self.wallet.operate("prepare", {"address": ADDRESS, "amount": "1"})
+        path.write_text('{"truncated":')
+        with self.assertRaises(c.WalletError):
+            self.wallet.send_record()
+        self.assertEqual(sum(m == "relay_tx" for m, _ in self.native.calls), 1)
 
     def test_pending_review_cannot_cross_wallets(self):
         quote = self.wallet.operate("prepare", {"address": ADDRESS, "amount": "1"})

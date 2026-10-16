@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 sys.dont_write_bytecode = True
+import guarded
 spec = importlib.util.spec_from_file_location('launch', Path(__file__).with_name('launch.py'))
 launch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(launch)
@@ -36,7 +37,7 @@ def private(path):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action', choices=('start', 'status', 'stop', 'keygen'))
+    p.add_argument('action', choices=('start', 'status', 'stop', 'recover', 'keygen'))
     p.add_argument('--data-dir', type=Path, required=True)
     p.add_argument('--release', type=Path)
     p.add_argument('--peer', type=Path, help='Operator-approved descriptor with pinned server key')
@@ -49,6 +50,9 @@ def main():
     control = root / 'control.sock'
     if len(os.fsencode(control)) >= 100:
         raise ValueError('Choose a shorter data-directory path for the local control socket.')
+    if a.action == 'recover':
+        recover(root, control)
+        return
     if a.action in ('status', 'stop'):
         with socket.socket(socket.AF_UNIX) as client:
             client.settimeout(5)
@@ -100,6 +104,21 @@ def main():
     listener.listen(2)
     listener.settimeout(.2)
     run = private(root / ('session-' + secrets.token_hex(8)))
+    owner = {'schema': 'meepcoin-session-owner/1', 'session': run.name,
+             'genesis': manifest['genesisHash'], 'releaseVersion': manifest['releaseVersion']}
+    with (run / 'OWNER.json').open('x') as stream:
+        json.dump(owner, stream);stream.flush();os.fsync(stream.fileno())
+    ownership = {'schema': 'meepcoin-session-ownership/1', 'session': run.name,
+                 'genesis': manifest['genesisHash'], 'releaseVersion': manifest['releaseVersion'],
+                 'controlInode': control.lstat().st_ino, 'startedUtc': time.time(), 'children': []}
+    def save_ownership():
+        temporary = root / ('ACTIVE_SESSION.' + secrets.token_hex(8) + '.pending')
+        with temporary.open('x') as stream:
+            json.dump(ownership, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, root / 'ACTIVE_SESSION.json')
+    save_ownership()
     known = run / 'known_hosts'
     known.write_text(f"[{peer['host']}]:{peer['port']} " + ' '.join(host_key[:2]) + '\n')
     logs, children, native_groups = [], [], []
@@ -115,8 +134,12 @@ def main():
     def start(name, argv):
         log = (run / (name + '.log')).open('xb')
         logs.append(log)
-        child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                                 start_new_session=True)
+        # Persist intent before fork: incomplete startup is refused by recovery.
+        receipt = run / (name + '-GUARD_STOPPED.json')
+        ownership['children'].append(receipt.name)
+        save_ownership()
+        environment = dict(os.environ, MEEPCOIN_SESSION_OWNER=json.dumps(owner), MEEPCOIN_SESSION_RUN=str(run))
+        child = guarded.Child(argv, output=log, receipt=receipt, seconds=a.seconds + 45, owner=owner, env=environment)
         children.append((name, child))
         return child
     def live():
@@ -224,19 +247,17 @@ def main():
             if child.poll() is None:
                 child.terminate()
             try:
-                child.wait(timeout=40)
+                child.wait(timeout=45)
             except subprocess.TimeoutExpired:
                 clean = False
                 child.kill()
-                child.wait(timeout=10)
+                child.wait(timeout=45)
             exits[name] = child.returncode
         native_empty = True
-        for group in native_groups:
-            try:
-                os.killpg(group, 0)
-                native_empty = False
-            except ProcessLookupError:
-                pass
+        try:
+            verify_owned_cleanup(root, run, owner, ownership['children'])
+        except (OSError, ValueError, KeyError, TypeError):
+            native_empty = False
         clean = clean and native_empty
         for log in logs:
             log.close()
@@ -250,6 +271,82 @@ def main():
         print(json.dumps(result), flush=True)
         if not clean:
             raise ValueError('A child controller did not finish graceful cleanup; inspect process receipts.')
+
+
+def owned_receipt(path):
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise ValueError('Recovery requires private owned regular receipts.')
+    return json.loads(path.read_text())
+
+
+def verify_owned_cleanup(root, run, owner, children):
+    if owned_receipt(run / 'OWNER.json') != owner:
+        raise ValueError('Session identity differs from its original ownership record.')
+    for name in children:
+        if name not in ('peer-GUARD_STOPPED.json', 'node-GUARD_STOPPED.json', 'wallet-GUARD_STOPPED.json'):
+            raise ValueError('Unknown recovery receipt; nothing was changed.')
+        receipt = owned_receipt(run / name)
+        if (receipt.get('schema') != 'meepcoin-owned-child/1' or receipt.get('owner') != owner
+                or receipt.get('ownedGroupDrained') is not True or receipt.get('error') is not None):
+            raise ValueError('Owned descendants have not completed verified cleanup.')
+    for role, parent, pattern in (('node', root / 'node', r'node-session-[a-f0-9]{16}'),
+                                  ('wallet', root / 'wallets', r'session-[a-f0-9]{16}')):
+        link = run / ('native-' + role + '.json')
+        if not os.path.lexists(link):
+            continue  # Controller publishes relationship durably before any native fork.
+        data = owned_receipt(link)
+        native = Path(data['run'])
+        if (data.get('owner') != owner or native.parent != parent or native.is_symlink()
+                or not __import__('re').fullmatch(pattern, native.name)):
+            raise ValueError('Nested native ownership relationship differs.')
+        receipt = owned_receipt(native / 'GUARD_STOPPED.json')
+        if (receipt.get('schema') != 'meepcoin-owned-child/1' or receipt.get('owner') != owner
+                or receipt.get('ownedGroupDrained') is not True or receipt.get('error') is not None):
+            raise ValueError('Native guardian cleanup is incomplete.')
+
+
+def recover(root, control):
+    """Remove only the proven stale socket; no saved PID is ever signaled."""
+    data = owned_receipt(root / 'ACTIVE_SESSION.json')
+    if (data.get('schema') != 'meepcoin-session-ownership/1'
+            or not isinstance(data.get('session'), str)
+            or not __import__('re').fullmatch(r'session-[a-f0-9]{16}', data['session'])
+            or not launch.c.HASH.fullmatch(data.get('genesis', ''))
+            or not isinstance(data.get('children'), list) or not data['children']):
+        raise ValueError('Recovery ownership is incomplete; nothing was changed.')
+    meta = control.lstat()
+    if (not stat.S_ISSOCK(meta.st_mode) or meta.st_uid != os.getuid()
+            or meta.st_ino != data['controlInode']):
+        raise ValueError('Control socket identity changed; nothing was changed.')
+    with socket.socket(socket.AF_UNIX) as probe:
+        probe.settimeout(1)
+        try:
+            probe.connect(str(control))
+        except ConnectionRefusedError:
+            pass
+        else:
+            raise ValueError('Session still accepts connections; use stop.')
+    run = private(root / data['session'])
+    owner = {'schema': 'meepcoin-session-owner/1', 'session': data['session'],
+             'genesis': data['genesis'], 'releaseVersion': data['releaseVersion']}
+    verify_owned_cleanup(root, run, owner, data['children'])
+    receipt = run / 'RECOVERED.json'
+    expected = {'status': 'STALE_SESSION_RECOVERED', 'session': data['session'],
+                'controlInode': meta.st_ino, 'genesis': data['genesis'],
+                'processesSignaled': 0, 'walletAndDatabaseRetained': True}
+    if os.path.lexists(receipt):
+        if owned_receipt(receipt) != expected:
+            raise ValueError('Existing recovery receipt differs; nothing was changed.')
+    else:
+        with os.fdopen(os.open(receipt, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), 'w') as stream:
+            json.dump(expected, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+    if control.lstat().st_ino != meta.st_ino:
+        raise ValueError('Control changed during recovery.')
+    control.unlink()
+    print(json.dumps({'status': 'STALE_SESSION_RECOVERED', 'processesSignaled': 0}))
 
 
 if __name__ == '__main__':

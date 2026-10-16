@@ -1,0 +1,25 @@
+name: Participant readiness boundaries
+on:
+  push:
+    branches: ['codex/participant-installation-*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: readiness-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  boundaries:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Gateway, invitations, expiry and browser availability
+        run: node --test --test-concurrency=1 pool/private/tests/*.test.mjs web-miner/tests/private_availability.test.mjs
+      - name: Native wallet boundaries and owned process guardians
+        run: python3 -B -m unittest discover -s wallet -p 'test_*.py' -v
+      - name: Exact participant imports and pinned Wasm
+        run: node scripts/private/verify-participant-assets.mjs

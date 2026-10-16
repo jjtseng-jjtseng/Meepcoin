@@ -16,6 +16,9 @@ import platform
 import re
 import sys
 sys.dont_write_bytecode = True
+# The signed installer deliberately imports this file under Python -I. Resolve
+# the guardian from the same authenticated release, independent of caller cwd.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 spec = importlib.util.spec_from_file_location('companion', Path(__file__).with_name('companion.py'))
 c = importlib.util.module_from_spec(spec)
@@ -90,7 +93,7 @@ def main():
         print(json.dumps({'status': 'INSTALLED_RELEASE_AND_LOCAL_NODE_IDENTITY_PASS', 'filesVerified': count,
                           'genesis': manifest['genesisHash'], 'nativeVersion': info['version'], 'walletOpened': False}))
         return
-    os.execv(sys.executable, [sys.executable, str(Path(__file__).with_name('companion.py')),
+    os.execv(sys.executable, [sys.executable, '-B', str(Path(__file__).with_name('companion.py')),
         '--wallet-rpc', str(root / 'bin/meepcoin-wallet-rpc'), '--wallet-dir', str(args.wallet_dir),
         '--daemon-port', str(args.daemon_port), '--genesis', manifest['genesisHash'],
         '--network', 'testnet', '--seconds', str(args.seconds)])

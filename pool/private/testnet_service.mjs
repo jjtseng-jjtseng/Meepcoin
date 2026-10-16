@@ -2,14 +2,15 @@
 import https from 'node:https';
 import http from 'node:http';
 import {randomBytes,timingSafeEqual} from 'node:crypto';
-import {readFile,statfs,lstat,writeFile,rename} from 'node:fs/promises';
-import {resolve} from 'node:path';
+import {readFile,statfs,lstat,open,rename,writeFile} from 'node:fs/promises';
+import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {performance} from 'node:perf_hooks';
 import {createPrivateGateway} from './server.mjs';
 import {ROUTES} from '../dev/static.mjs';
 import {experimentWindow} from './experiment.mjs';
 import {validateTlsIdentity} from './tls_identity.mjs';
+import {progressPolicy} from './availability.mjs';
 
 const fail=(code,status=400)=>Object.assign(new Error(code),{code,status});
 const validToken=x=>typeof x==='string' && /^[a-f0-9]{64}$/.test(x);
@@ -19,6 +20,7 @@ export async function createTestnetService({
   expectedNetwork='testnet',expectedGenesisHash,expectedVersion,
   requestsPerMinute=120,startsPerMinute=6,now=()=>performance.now(),
   experiment,incidentContact,wallNow=Date.now,
+  availabilityFile,
   gatewayFactory=createPrivateGateway,freeBytes=async()=>{const s=await statfs(dataDirectory,{bigint:true});return s.bavail*s.bsize;},
 }={}) {
   const advertised=new URL(origin);
@@ -37,6 +39,19 @@ export async function createTestnetService({
   if(epoch&&(typeof incidentContact!=='string'||!incidentContact.trim()||incidentContact.length>200||/[\r\n\x00-\x1f]/.test(incidentContact)))
     throw new TypeError('plain incident contact required');
   const epochOpen=()=>!epoch||epoch.open();
+  let progress,savedProgress;
+  if(epoch){
+    if(typeof availabilityFile!=='string'||!availabilityFile.length)throw TypeError('Persisted progress file required for a finite epoch');
+    let restored;
+    if(availabilityFile){
+      const meta=await lstat(availabilityFile);
+      if(!meta.isFile()||meta.isSymbolicLink()||(process.platform!=='win32'&&(meta.uid!==process.getuid()||meta.mode&0o077)))
+        throw TypeError('Private owned progress file required');
+      restored=JSON.parse(await readFile(availabilityFile,'utf8'));
+      savedProgress=JSON.stringify(restored);
+    }
+    progress=progressPolicy({genesis:expectedGenesisHash,startedUtcUnix:experiment.startsUtcUnix,restored,wallNow,monotonicNow:now});
+  }
   let closing=false,closeTask,nonceCursor=0,candidateBusy=false,nativeCandidateBusy=false,startBusy=false;
   const records=[];const sockets=new Set();const addresses=new Map();const anonymousRequests=[];const staticClients=new Map();
   let readiness={ready:false,reason:'starting'};
@@ -61,10 +76,32 @@ export async function createTestnetService({
     const time=now();while(times.length && times[0]<=time-60000)times.shift();
     if(times.length>=limit)throw fail('rate_limit',429);times.push(time);
   }
-  async function checkReady() {
+  let healthTask;
+  function checkReady(){
+    if(!healthTask)healthTask=readinessCheck().finally(()=>{healthTask=undefined;});
+    return healthTask;
+  }
+  async function persistProgress(observed){
+    if(!availabilityFile||!observed)return;
+    const {lastBlockAgeSeconds,stallAfterSeconds,...state}=observed;
+    const serialized=JSON.stringify(state);
+    if(serialized===savedProgress)return;
+    const temporary=availabilityFile+'.'+randomBytes(8).toString('hex')+'.pending';
+    const file=await open(temporary,'wx',0o600);
+    try{await file.writeFile(serialized+'\n');await file.sync();}finally{await file.close();}
+    await rename(temporary,availabilityFile);
+    if(process.platform!=='win32'){
+      const directory=await open(dirname(availabilityFile),'r');
+      try{await directory.sync();}finally{await directory.close();}
+    }
+    savedProgress=serialized;
+  }
+  async function readinessCheck() {
     try {
       if(closing)return readiness={ready:false,reason:'closing'};
       if(!epochOpen())return readiness={ready:false,reason:'experiment_expired'};
+      const initial=progress?.snapshot();
+      if(initial?.closed){await persistProgress(initial);return readiness={ready:false,...initial};}
       if(BigInt(await freeBytes())<BigInt(minFreeBytes))return readiness={ready:false,reason:'disk_space'};
       const signal=AbortSignal.timeout(3000);
       async function healthRpc(method,params={}) {
@@ -83,10 +120,17 @@ export async function createTestnetService({
       const genesis=await healthRpc('get_block_header_by_height',{height:0});
       if(genesis?.status!=='OK'||genesis.block_header?.hash!==expectedGenesisHash)return readiness={ready:false,reason:'daemon_identity'};
       if(epoch&&genesis.block_header.timestamp!==epoch.genesisUtcUnix)return readiness={ready:false,reason:'daemon_identity'};
+      const observed=progress?.observe(r.height,r.top_block_hash);
+      await persistProgress(observed);
+      if(observed?.closed)return readiness={ready:false,reason:observed.reason,...observed};
       if(closing)return readiness={ready:false,reason:'closing'};
       if(!epochOpen())return readiness={ready:false,reason:'experiment_expired'};
-      return readiness={ready:true,reason:'ready',height:r.height};
-    }catch{return readiness={ready:false,reason:closing?'closing':'daemon_unavailable'};}
+      return readiness={ready:true,reason:'ready',height:r.height,
+        ...(observed?{lastBlockAgeSeconds:observed.lastBlockAgeSeconds,stallAfterSeconds:observed.stallAfterSeconds}: {})};
+    }catch(error){
+      if(error?.code&&['ENOSPC','EDQUOT','EIO','EROFS','EACCES'].includes(error.code))progress?.close('progress_storage_failed');
+      return readiness={ready:false,reason:closing?'closing':'daemon_unavailable'};
+    }
   }
   function upstream(record,path,method,body,signal) {
     return new Promise((ok,bad)=>{
@@ -125,7 +169,17 @@ export async function createTestnetService({
   const server=https.createServer({...tls,minVersion:'TLSv1.2',handshakeTimeout:5000},async(req,res)=>{
     let record,revision,admissionToken,admitted=false,claimedCandidate=false,claimedStart=false;
     const disconnected=new AbortController();
-    res.once('close',()=>{if(!res.writableEnded){disconnected.abort();if(admitted&&record.revision===revision&&record.token===admissionToken)void revoke(record,'client_disconnected');}});
+    res.once('close',()=>{
+      if(res.writableEnded)return;
+      disconnected.abort();
+      if(admitted&&record.revision===revision&&record.token===admissionToken){
+        // A lost HTTP response invalidates the outstanding work, not the
+        // owner's invitation. Explicit revoke/expiry still close authorization.
+        // Increment before cancellation so delayed replies cannot issue a job.
+        record.revision++;
+        void record.gateway.cancel();
+      }
+    });
     const send=(status,body,headers={})=>{
       if(res.destroyed)return;
       if(res.headersSent){res.destroy();return;}
@@ -144,7 +198,11 @@ export async function createTestnetService({
         record=lookup(req.headers['x-meep-session']);if(!record)throw fail('unauthorized',403);
         if(record.inFlight>=3)throw fail('client_busy',429);
         quota(record.requests,requestsPerMinute);record.inFlight++;admitted=true;revision=record.revision;admissionToken=req.headers['x-meep-session'];
-        if(path==='/readyz')return send((await checkReady()).ready?200:503,readiness);
+        if(path==='/readyz'){
+          const ready=await checkReady();
+          if(disconnected.signal.aborted||closing||record.revision!==revision||!lookup(admissionToken))throw fail('unauthorized',403);
+          return send(ready.ready?200:503,ready);
+        }
         if(!['/api/status','/api/start','/api/stop','/api/candidate'].includes(path))throw fail('not_found',404);
         if(req.method!==(path==='/api/status'?'GET':'POST'))throw fail('method',405);
         if(req.method!=='GET'&&req.headers.origin!==origin)throw fail('bad_origin',403);
@@ -174,6 +232,12 @@ export async function createTestnetService({
           if(record.revision===revision)await revoke(record,'expired');
           throw fail('unauthorized',403);
         }
+        if(path==='/api/status'&&response.status===200){
+          const status=JSON.parse(response.body.toString());
+          const availability=await checkReady();
+          if(disconnected.signal.aborted||closing||record.revision!==revision||!lookup(admissionToken))throw fail('unauthorized',403);
+          return send(200,{...status,availability});
+        }
         return send(response.status,response.body);
       }
       if(req.method!=='GET')throw fail('method',405);
@@ -193,7 +257,7 @@ export async function createTestnetService({
       if(path==='/'&&epoch){
         const escape=s=>s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
         const notice='<section class="notes"><h2>Experiment notice</h2><p>This experiment ends at '+new Date(experiment.endsUtcUnix*1000).toISOString()
-          +'. The operator may stop it earlier. A reset starts a new chain; balances are not promised to survive.</p><p>Incident contact: '+escape(incidentContact)+'</p></section>';
+          +'. The operator may stop it earlier. A reset starts a new chain; balances are not promised to survive.</p><p>No miners means no new blocks. Block time, reward maturity and payments may stall. Ten minutes without canonical progress closes new mining admission for this experiment.</p><p>Incident contact: '+escape(incidentContact)+'</p></section>';
         bytes=Buffer.from(bytes.toString().replace('</main>',notice+'</main>'));
       }
       const headers=Object.fromEntries(Object.entries(response.headers).filter(([k])=>!['connection','keep-alive','content-length','transfer-encoding'].includes(k)));
@@ -215,9 +279,16 @@ export async function createTestnetService({
     if(!epochOpen()){void close();return;}
     for(const r of records)if(!r.revoked&&now()>=r.expires)void revoke(r,'expired');
   },1000);expiry.unref();
+  let healthBusy=false;
+  const health=setInterval(async()=>{
+    if(healthBusy||closing)return;healthBusy=true;
+    try {
+      if(!(await checkReady()).ready)await Promise.allSettled(records.map(r=>r.gateway.cancel()));
+    }finally{healthBusy=false;}
+  },2000);health.unref();
   const endTimer=epoch?setTimeout(()=>void close(),Math.max(1,epoch.deadline-now())):null;endTimer?.unref();
   try {await new Promise((ok,bad)=>{server.once('error',bad);server.listen(port,host,ok);});}
-  catch(e){clearInterval(expiry);clearTimeout(endTimer);await Promise.allSettled(records.map(r=>r.gateway.close()));throw e;}
+  catch(e){clearInterval(expiry);clearInterval(health);clearTimeout(endTimer);await Promise.allSettled(records.map(r=>r.gateway.close()));throw e;}
   if(!epochOpen()){await close();throw fail('experiment_expired',503);}
   return {port:server.address().port,readiness:()=>closing?{ready:false,reason:'closing'}:!epochOpen()?{ready:false,reason:'experiment_expired'}:{...readiness},checkReady,
     async rotate(token) {
@@ -232,7 +303,7 @@ export async function createTestnetService({
     revoke:async token=>{const r=validToken(token)&&records.find(r=>timingSafeEqual(Buffer.from(token,'hex'),Buffer.from(r.token,'hex')));if(r)await revoke(r,'operator_revoked');},
     close};
     function close() {
-      if(closeTask)return closeTask;closing=true;readiness={ready:false,reason:'closing'};clearInterval(expiry);clearTimeout(endTimer);
+      if(closeTask)return closeTask;closing=true;readiness={ready:false,reason:'closing'};clearInterval(expiry);clearInterval(health);clearTimeout(endTimer);
       closeTask=(async()=>{
         const closed=new Promise(ok=>server.close(ok));
         for(const socket of sockets)socket.destroy();
@@ -261,7 +332,11 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   async function replaceSecret(path,object) {
     await ownerFile(path);
     const temporary=path+'.'+randomBytes(8).toString('hex')+'.tmp';
-    await writeFile(temporary,JSON.stringify(object,null,2)+'\n',{flag:'wx',mode:0o600});await rename(temporary,path);
+    const file=await open(temporary,'wx',0o600);
+    try{await file.writeFile(JSON.stringify(object,null,2)+'\n');await file.sync();}finally{await file.close();}
+    await rename(temporary,path);
+    const directory=await open(dirname(path),'r');
+    try{await directory.sync();}finally{await directory.close();}
   }
   if(config.inviteOutput&&process.platform!=='win32')process.on('SIGHUP',async()=>{
     if(rotating)return;rotating=true;
